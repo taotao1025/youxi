@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>����˴�ս - �ռ���</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      color: white;
+    }
+
+    #game {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(to bottom, #111, #000);
+    }
+
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      font-size: 18px;
+    }
+
+    .health-bar {
+      height: 10px;
+      width: 100px;
+      background: #444;
+      border: 1px solid #666;
+      margin-top: 4px;
+      border-radius: 2px;
+    }
+    .health-fill {
+      height: 100%;
+      background: limegreen;
+      width: 100%;
+      transition: width 0.2s;
+    }
+
+    .stickman {
+      position: absolute;
+      width: 40px;
+      height: 80px;
+    }
+
+    .head {
+      width: 20px;
+      height: 20px;
+      border: 3px solid white;
+      border-radius: 50%;
+      position: absolute;
+      top: 0;
+      left: 10px;
+    }
+
+    .body {
+      width: 3px;
+      height: 30px;
+      background: white;
+      position: absolute;
+      top: 22px;
+      left: 18px;
+    }
+
+    .arm {
+      width: 20px;
+      height: 3px;
+      background: white;
+      position: absolute;
+      top: 25px;
+      transform-origin: left center;
+    }
+
+    .left-arm { left: 18px; transform: rotate(-30deg); }
+    .right-arm { left: 18px; transform: rotate(30deg); }
+
+    .leg {
+      width: 20px;
+      height: 3px;
+      background: white;
+      position: absolute;
+      top: 50px;
+      transform-origin: left center;
+    }
+
+    .left-leg { left: 18px; transform: rotate(-15deg); }
+    .right-leg { left: 18px; transform: rotate(15deg); }
+
+    .sword {
+      position: absolute;
+      width: 30px;
+      height: 2px;
+      background: silver;
+      top: 25px;
+      left: 38px;
+      transform-origin: left center;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .enemy .head { border-color: red; }
+    .enemy .body,
+    .enemy .arm,
+    .enemy .leg { background: red; }
+
+    .attack .right-arm { transform: rotate(90deg); }
+    .attack .sword { opacity: 1; }
+
+    .run .left-leg { transform: rotate(-40deg); }
+    .run .right-leg { transform: rotate(40deg); }
+
+    .defeated {
+      opacity: 0.3;
+    }
+
+    .particle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    #level-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      font-size: 48px;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game">
+  <div id="ui">
+    <div>�ؿ�: <span id="level">1</span></div>
+    <div>�÷�: <span id="score">0</span></div>
+    <div>����:
+      <div class="health-bar">
+        <div class="health-fill" id="player-health"></div>
+      </div>
+    </div>
+    <div style="margin-top:10px;">WASD �ƶ� | �ո���Ծ/����</div>
+  </div>
+  <div id="level-overlay"></div>
+  <div class="stickman" id="player">
+    <div class="head"></div>
+    <div class="body"></div>
+    <div class="arm left-arm"></div>
+    <div class="arm right-arm"></div>
+    <div class="leg left-leg"></div>
+    <div class="leg right-leg"></div>
+    <div class="sword"></div>
+  </div>
+</div>
+
+<script>
+  // ========== ��Ƶ��Base64 �����С��Ч��==========
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  
+  function playTone(frequency, duration, type = 'square', gain = 0.1) {
+    try {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = type;
+      oscillator.frequency.value = frequency;
+      gainNode.gain.value = gain;
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + duration);
+    } catch (e) {
+      // ����ģʽ
+    }
+  }
+
+  function playJump() { playTone(300, 0.2, 'sine', 0.05); }
+  function playAttack() { playTone(800, 0.1, 'square', 0.1); }
+  function playHurt() { playTone(150, 0.3, 'sawtooth', 0.2); }
+  function playLevelUp() { 
+    [523, 659, 784].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'sine', 0.1), i * 200));
+  }
+
+  // ========== ��Ϸ���� ==========
+  const GRAVITY = 0.5;
+  const JUMP_FORCE = -12;
+  const MOVE_SPEED = 6;
+  const GROUND_Y = 100;
+
+  // ========== ȫ��״̬ ==========
+  const gameArea = document.getElementById('game');
+  const player = document.getElementById('player');
+  const scoreEl = document.getElementById('score');
+  const levelEl = document.getElementById('level');
+  const healthBar = document.getElementById('player-health');
+  const overlay = document.getElementById('level-overlay');
+
+  let posX = 100;
+  let posY = gameArea.clientHeight - GROUND_Y - 80;
+  let velY = 0;
+  let isOnGround = true;
+  let facingRight = true;
+  let isRunning = false;
+  let score = 0;
+  let playerHealth = 100;
+  let currentLevel = 1;
+  let enemies = [];
+  let keys = {};
+  let particles = [];
+
+  // ========== �ؿ����� ==========
+  const levelConfig = [
+    { enemyCount: 3, enemyHealth: 80 },
+    { enemyCount: 5, enemyHealth: 100 },
+    { enemyCount: 7, enemyHealth: 120 },
+    { enemyCount: 10, enemyHealth: 150 },
+  ];
+
+  // ========== ��ʼ�� ==========
+  updatePlayer();
+  startLevel(currentLevel);
+
+  // ========== ���� ==========
+  window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (isOnGround) {
+        jump();
+        playJump();
+      } else {
+        attack();
+        playAttack();
+      }
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  // ========== ���� ==========
+  function jump() {
+    if (isOnGround) {
+      velY = JUMP_FORCE;
+      isOnGround = false;
+    }
+  }
+
+  function createParticle(x, y, color, vx, vy) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.backgroundColor = color;
+    p.style.left = x + 'px';
+    p.style.bottom = y + 'px';
+    gameArea.appendChild(p);
+    particles.push({ el: p, x, y, vx, vy, life: 30 });
+  }
+
+  function attack() {
+    player.classList.add('attack');
+    setTimeout(() => player.classList.remove('attack'), 200);
+
+    // ���ӣ�������
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 3;
+      createParticle(
+        posX + 40,
+        gameArea.clientHeight - posY - 40,
+        '#ff9',
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed
+      );
+    }
+
+    // ������
+    const playerCenterX = posX + 20;
+    enemies.forEach(enemy => {
+      if (enemy.defeated) return;
+      const dx = Math.abs(playerCenterX - (enemy.x + 20));
+      const dy = Math.abs((gameArea.clientHeight - posY - 40) - (gameArea.clientHeight - enemy.y - 40));
+      if (dx < 80 && dy < 50) {
+        damageEnemy(enemy, 30);
+        // ��������
+        for (let i = 0; i < 5; i++) {
+          createParticle(enemy.x + 20, gameArea.clientHeight - enemy.y - 40, '#f55', (Math.random() - 0.5) * 4, -Math.random() * 3);
+        }
+      }
+    });
+  }
+
+  function damageEnemy(enemy, damage) {
+    enemy.health -= damage;
+    enemy.healthBar.style.width = enemy.health + '%';
+    if (enemy.health <= 0 && !enemy.defeated) {
+      enemy.defeated = true;
+      enemy.element.classList.add('defeated');
+      score += 10 * currentLevel;
+      scoreEl.textContent = score;
+
+      // ��ը����
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 4;
+        createParticle(
+          enemy.x + 20,
+          gameArea.clientHeight - enemy.y - 40,
+          '#f55',
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed
+        );
+      }
+
+      checkLevelComplete();
+    }
+  }
+
+  function takeDamage(amount) {
+    playerHealth = Math.max(0, playerHealth - amount);
+    healthBar.style.width = playerHealth + '%';
+    if (playerHealth <= 0) {
+      alert(`��Ϸ���������յ÷֣�${score} | �ؿ���${currentLevel}`);
+      location.reload();
+    } else {
+      playHurt();
+    }
+  }
+
+  function checkLevelComplete() {
+    if (enemies.every(e => e.defeated)) {
+      showLevelComplete();
+      setTimeout(nextLevel, 2000);
+    }
+  }
+
+  function showLevelComplete() {
+    overlay.textContent = `�� ${currentLevel} ����ɣ�`;
+    overlay.style.opacity = '1';
+    playLevelUp();
+  }
+
+  function nextLevel() {
+    currentLevel++;
+    levelEl.textContent = currentLevel;
+    overlay.style.opacity = '0';
+    startLevel(currentLevel);
+  }
+
+  function startLevel(level) {
+    // ����ɵ���
+    enemies.forEach(e => e.element.remove());
+    enemies = [];
+
+    // ��ȡ����
+    const config = levelConfig[Math.min(level - 1, levelConfig.length - 1)];
+    const count = config.enemyCount;
+    const health = config.enemyHealth;
+
+    // ���ɵ���
+    for (let i = 0; i < count; i++) {
+      const x = gameArea.clientWidth - 200 - Math.random() * 400;
+      const y = GROUND_Y;
+
+      const enemyEl = document.createElement('div');
+      enemyEl.className = 'stickman enemy';
+      enemyEl.innerHTML = `
+        <div class="head"></div>
+        <div class="body"></div>
+        <div class="arm left-arm"></div>
+        <div class="arm right-arm"></div>
+        <div class="leg left-leg"></div>
+        <div class="leg right-leg"></div>
+        <div class="health-bar" style="position:absolute;top:-15px;left:0;width:40px;">
+          <div class="health-fill" style="width:100%"></div>
+        </div>
+      `;
+      gameArea.appendChild(enemyEl);
+
+      const healthBarEl = enemyEl.querySelector('.health-fill');
+
+      enemies.push({
+        element: enemyEl,
+        x: x,
+        y: y,
+        health: health,
+        healthBar: healthBarEl,
+        defeated: false
+      });
+
+      enemyEl.style.left = x + 'px';
+      enemyEl.style.bottom = y + 'px';
+    }
+
+    // �������λ�ú�Ѫ������ѡ������Ѫ����
+    posX = 100;
+    posY = gameArea.clientHeight - GROUND_Y - 80;
+    velY = 0;
+    // playerHealth = 100; // ��ѡ������Ѫ����ս���߹ؿ�
+    healthBar.style.width = playerHealth + '%';
+  }
+
+  function updatePlayer() {
+    player.style.left = posX + 'px';
+    player.style.bottom = posY + 'px';
+    if (!facingRight) {
+      player.style.transform = 'scaleX(-1)';
+    } else {
+      player.style.transform = 'scaleX(1)';
+    }
+    if (isRunning) {
+      player.classList.add('run');
+    } else {
+      player.classList.remove('run');
+    }
+  }
+
+  // ========== ��ѭ�� ==========
+  function gameLoop() {
+    const width = gameArea.clientWidth;
+    const height = gameArea.clientHeight;
+
+    // ����
+    isRunning = false;
+    if (keys['a'] || keys['arrowleft']) {
+      posX -= MOVE_SPEED;
+      facingRight = false;
+      isRunning = true;
+    }
+    if (keys['d'] || keys['arrowright']) {
+      posX += MOVE_SPEED;
+      facingRight = true;
+      isRunning = true;
+    }
+    posX = Math.max(0, Math.min(width - 40, posX));
+
+    // ����
+    velY += GRAVITY;
+    posY += velY;
+    const groundLevel = height - GROUND_Y - 80;
+    if (posY > groundLevel) {
+      posY = groundLevel;
+      velY = 0;
+      isOnGround = true;
+    } else {
+      isOnGround = false;
+    }
+
+    // ���� AI
+    enemies.forEach(e => {
+      if (e.defeated) return;
+      const playerCenterX = posX + 20;
+      const enemyCenterX = e.x + 20;
+      const dx = Math.abs(playerCenterX - enemyCenterX);
+      if (dx < 60) {
+        takeDamage(0.5);
+      }
+    });
+
+    // ���Ӹ���
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.1; // ��������
+      p.life--;
+      p.el.style.left = p.x + 'px';
+      p.el.style.bottom = p.y + 'px';
+      p.el.style.opacity = p.life / 30;
+      if (p.life <= 0) {
+        p.el.remove();
+        particles.splice(i, 1);
+      }
+    }
+
+    updatePlayer();
+    requestAnimationFrame(gameLoop);
+  }
+
+  gameLoop();
+</script>
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e903613c-da31-428d-8401-10034a9d5004"></script>
+
+</body>
+</html>

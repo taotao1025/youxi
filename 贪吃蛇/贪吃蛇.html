@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>贪吃蛇</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", "SimSun", sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f);
+            color: white;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #coverScreen {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            max-width: 90vw;
+            width: 550px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: gold;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+        }
+
+        #bestScore {
+            font-size: 16px;
+            color: #ffcc00;
+            margin: 10px 0;
+        }
+
+        .character-select {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin: 15px 0;
+        }
+
+        .snake-option {
+            width: 45px;
+            height: 45px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .snake-option.selected, .snake-option:hover {
+            border-color: gold;
+            transform: scale(1.1);
+            transition: all 0.2s;
+        }
+
+        .snake-head, .snake-body {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            margin: 1px 0;
+        }
+
+        .snake-body {
+            width: 10px;
+            height: 10px;
+        }
+
+        button {
+            background: linear-gradient(to right, #ff8c00, #ffcc00);
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 8px 0;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            font-size: 13px;
+            color: #ccc;
+            margin-top: 15px;
+        }
+
+        #gameCanvas {
+            display: none;
+            background: white;
+            border-radius: 8.
+        }
+
+        #uiPanel {
+            display: none;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 16px;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+<div id="coverScreen">
+    <h1>🐍 贪吃蛇：无限敌人</h1>
+    <div id="bestScore">历史最高分: 0</div>
+
+    <div class="character-select">
+        <div class="snake-option" data-color="green">
+            <div class="snake-head" style="background:#27ae60;"></div>
+            <div class="snake-body" style="background:#2ecc71;"></div>
+        </div>
+        <div class="snake-option" data-color="blue">
+            <div class="snake-head" style="background:#2980b9;"></div>
+            <div class="snake-body" style="background:#3498db;"></div>
+        </div>
+        <div class="snake-option" data-color="orange">
+            <div class="snake-head" style="background:#d35400;"></div>
+            <div class="snake-body" style="background:#e67e22;"></div>
+        </div>
+        <div class="snake-option" data-color="purple">
+            <div class="snake-head" style="background:#8e44ad;"></div>
+            <div class="snake-body" style="background:#9b59b6;"></div>
+        </div>
+        <div class="snake-option" data-color="red">
+            <div class="snake-head" style="background:#c0392b;"></div>
+            <div class="snake-body" style="background:#e74c3c;"></div>
+        </div>
+        <div class="snake-option" data-color="cyan">
+            <div class="snake-head" style="background:#16a085;"></div>
+            <div class="snake-body" style="background:#1abc9c;"></div>
+        </div>
+        <div class="snake-option" data-color="pink">
+            <div class="snake-head" style="background:#d3548f;"></div>
+            <div class="snake-body" style="background:#e91e63;"></div>
+        </div>
+        <div class="snake-option" data-color="black">
+            <div class="snake-head" style="background:#2c3e50;"></div>
+            <div class="snake-body" style="background:#34495e;"></div>
+        </div>
+    </div>
+
+    <button id="startBtn">开始游戏</button>
+    <p class="instructions">操作说明：电脑使用方向键 · 手机滑动屏幕控制方向</p>
+</div>
+
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<div id="uiPanel">
+    <div id="level">关卡: 1</div>
+    <div id="score">得分: 0</div>
+    <div id="speedInfo">速度: 正常</div>
+</div>
+
+<script>
+// ========== 存储 ==========
+function getBestScore() {
+    try { return parseInt(localStorage.getItem('snakeBestScore') || '0'); } catch { return 0; }
+}
+function setBestScore(score) {
+    try { localStorage.setItem('snakeBestScore', Math.max(getBestScore(), score).toString()); } catch {}
+}
+function getLastColor() {
+    try { return localStorage.getItem('snakeLastColor') || 'green'; } catch { return 'green'; }
+}
+function setLastColor(color) {
+    try { localStorage.setItem('snakeLastColor', color); } catch {}
+}
+
+// ========== 初始化封面 ==========
+let playerColor = getLastColor();
+document.getElementById('bestScore').textContent = `历史最高分: ${getBestScore()}`;
+
+document.querySelectorAll('.snake-option').forEach(opt => {
+    if (opt.dataset.color === playerColor) opt.classList.add('selected');
+    opt.addEventListener('click', () => {
+        document.querySelectorAll('.snake-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        playerColor = opt.dataset.color;
+    });
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+    document.getElementById('coverScreen').style.display = 'none';
+    document.getElementById('gameCanvas').style.display = 'block';
+    document.getElementById('uiPanel').style.display = 'block';
+    startGame(playerColor);
+});
+
+// ========== 游戏主逻辑 ==========
+function startGame(color) {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const size = 20;
+    const cols = canvas.width / size;
+    const rows = canvas.height / size;
+
+    const colors = {
+        green:  { head: '#27ae60', body: '#2ecc71' },
+        blue:   { head: '#2980b9', body: '#3498db' },
+        orange: { head: '#d35400', body: '#e67e22' },
+        purple: { head: '#8e44ad', body: '#9b59b6' },
+        red:    { head: '#c0392b', body: '#e74c3c' },
+        cyan:   { head: '#16a085', body: '#1abc9c' },
+        pink:   { head: '#d3548f', body: '#e91e63' },
+        black:  { head: '#2c3e50', body: '#34495e' }
+    };
+    const snakeColor = colors[color] || colors.green;
+
+    let snake = [{x:10,y:10}, {x:9,y:10}, {x:8,y:10}];
+    let dir = 'right';
+    let nextDir = 'right';
+    let food = randomPos();
+    let score = 0;
+    let level = 1;
+    let running = true;
+    let enemies = [];
+    let boss = null;
+
+    function updateUI() {
+        document.getElementById('score').textContent = `得分: ${score}`;
+        document.getElementById('level').textContent = `关卡: ${level}`;
+        if (level === 1) {
+            document.getElementById('speedInfo').textContent = score >= 50 ? '速度: 快速' : '速度: 正常';
+        } else if (level === 2) {
+            document.getElementById('speedInfo').textContent = '速度: 快速（无限敌人 + 夺食）';
+        } else {
+            document.getElementById('speedInfo').textContent = '速度: 快速（Boss战！击败即胜）';
+        }
+    }
+
+    function randomPos(exclude = []) {
+        let p;
+        do {
+            p = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
+        } while (exclude.some(item => 
+            (Array.isArray(item) ? item : [item]).some(seg => seg.x === p.x && seg.y === p.y)
+        ));
+        return p;
+    }
+
+    function draw() {
+        ctx.fillStyle = level === 3 ? '#1a1a2e' : '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 玩家蛇
+        snake.forEach((seg, i) => {
+            ctx.fillStyle = i === 0 ? snakeColor.head : snakeColor.body;
+            ctx.fillRect(seg.x * size, seg.y * size, size - 2, size - 2);
+        });
+
+        // 食物
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(food.x * size, food.y * size, size - 2, size - 2);
+
+        // 敌人 & Boss
+        [...enemies, ...(boss ? [boss] : [])].forEach(entity => {
+            entity.body.forEach((seg, i) => {
+                ctx.fillStyle = entity.isBoss ? 
+                    (i === 0 ? '#8e44ad' : '#9b59b6') : 
+                    (i === 0 ? '#a93226' : '#c0392b');
+                ctx.fillRect(seg.x * size, seg.y * size, size - 2, size - 2);
+            });
+        });
+    }
+
+    // 移动所有敌人（含吃食物）
+    function moveEnemies() {
+        if (level < 2) return;
+        for (let ei = 0; ei < enemies.length; ei++) {
+            const e = enemies[ei];
+            const head = {...e.body[0]};
+            const dirs = ['up','down','left','right'];
+            let newDir = e.dir;
+            if (Math.random() < 0.3) newDir = dirs[Math.floor(Math.random()*4)];
+            const opp = {up:'down', down:'up', left:'right', right:'left'};
+            if (newDir === opp[e.dir]) newDir = e.dir;
+            e.dir = newDir;
+
+            switch (newDir) {
+                case 'up': head.y--; break;
+                case 'down': head.y++; break;
+                case 'left': head.x--; break;
+                case 'right': head.x++; break;
+            }
+            head.x = (head.x + cols) % cols;
+            head.y = (head.y + rows) % rows;
+
+            // 吃食物？
+            if (head.x === food.x && head.y === food.y) {
+                e.body.unshift(head); // 变长
+                const exclude = [
+                    ...snake,
+                    ...enemies.flatMap(en => en.body),
+                    ...(boss?.body || [])
+                ];
+                food = randomPos(exclude);
+            } else {
+                e.body.pop();
+                e.body.unshift(head);
+            }
+        }
+    }
+
+    // Boss移动
+    function moveBoss() {
+        if (!boss) return;
+        const head = {...boss.body[0]};
+        head.x = (head.x + 1) % cols;
+        if (head.x === food.x && head.y === food.y) {
+            boss.body.unshift(head);
+            const exclude = [
+                ...snake,
+                ...enemies.flatMap(en => en.body),
+                ...boss.body
+            ];
+            food = randomPos(exclude);
+        } else {
+            boss.body.pop();
+            boss.body.unshift(head);
+        }
+    }
+
+    // 每隔一段时间生成新敌人（仅第2关）
+    function spawnEnemy() {
+        if (level !== 2 || !running) return;
+        const exclude = [
+            ...snake,
+            ...enemies.flatMap(e => e.body),
+            food,
+            ...(boss?.body || [])
+        ];
+        const pos = randomPos(exclude);
+        enemies.push({ 
+            body: [pos], 
+            dir: ['up','down','left','right'][Math.floor(Math.random()*4)] 
+        });
+    }
+
+    function checkCollisions() {
+        const head = snake[0];
+
+        // 第1关撞墙
+        if (level === 1 && (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows)) {
+            return 'player-die';
+        }
+
+        // 自咬
+        for (let i = 1; i < snake.length; i++) {
+            if (snake[i].x === head.x && snake[i].y === head.y) {
+                return 'player-die';
+            }
+        }
+
+        // 与敌人/Boss碰撞 → 长度决胜
+        const allEntities = [...enemies, ...(boss ? [boss] : [])];
+        for (const entity of allEntities) {
+            for (const seg of entity.body) {
+                if (seg.x === head.x && seg.y === head.y) {
+                    if (snake.length > entity.body.length) {
+                        if (entity.isBoss) {
+                            return 'boss-defeated';
+                        } else {
+                            // 移除被吃敌人
+                            const idx = enemies.indexOf(entity);
+                            if (idx !== -1) enemies.splice(idx, 1);
+                            return 'enemy-eaten';
+                        }
+                    } else {
+                        return 'player-die';
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function update() {
+        dir = nextDir;
+        const head = {...snake[0]};
+        switch (dir) {
+            case 'up': head.y--; break;
+            case 'down': head.y++; break;
+            case 'left': head.x--; break;
+            case 'right': head.x++; break;
+        }
+
+        if (level >= 2) {
+            head.x = (head.x + cols) % cols;
+            head.y = (head.y + rows) % rows;
+        }
+
+        snake.unshift(head);
+
+        const result = checkCollisions();
+        if (result === 'player-die') {
+            gameOver(false);
+            return;
+        } else if (result === 'boss-defeated') {
+            victory();
+            return;
+        } else if (result === 'enemy-eaten') {
+            // 已处理
+        }
+
+        // 玩家吃食物
+        if (head.x === food.x && head.y === food.y) {
+            score += 10;
+            updateUI();
+            const exclude = [
+                ...snake,
+                ...enemies.flatMap(e => e.body),
+                ...(boss?.body || [])
+            ];
+            food = randomPos(exclude);
+
+            // 升级关卡
+            if (level === 1 && score >= 100) {
+                level = 2;
+                updateUI();
+                // 初始2个敌人
+                for (let i = 0; i < 2; i++) spawnEnemy();
+                clearInterval(enemyLoop);
+                enemyLoop = setInterval(() => { moveEnemies(); draw(); }, 300);
+                // 每5秒新增一个敌人（无限）
+                enemySpawner = setInterval(spawnEnemy, 5000);
+            } else if (level === 2 && score >= 300) {
+                level = 3;
+                updateUI();
+                clearInterval(enemySpawner); // 停止生成新敌人
+                initBoss();
+            }
+        } else {
+            snake.pop();
+        }
+    }
+
+    function initBoss() {
+        enemies = []; // 清空普通敌人
+        const head = randomPos([...snake, food]);
+        boss = { 
+            isBoss: true,
+            body: Array.from({length: 6}, (_, i) => ({ 
+                x: (head.x - i + cols) % cols, 
+                y: head.y 
+            })) 
+        };
+    }
+
+    function gameOver(isWin = false) {
+        running = false;
+        clearInterval(gameLoop);
+        clearInterval(enemyLoop);
+        clearInterval(enemySpawner);
+        setBestScore(score);
+        setLastColor(playerColor);
+        alert(`💀 游戏结束！\n最终得分：${score}\n当前关卡：${level}`);
+        location.reload();
+    }
+
+    function victory() {
+        running = false;
+        clearInterval(gameLoop);
+        clearInterval(enemyLoop);
+        clearInterval(enemySpawner);
+        setBestScore(score);
+        setLastColor(playerColor);
+        alert(`🏆 恭喜！你击败了Boss！\n最终得分：${score}`);
+        location.reload();
+    }
+
+    // 控制
+    let startX = 0, startY = 0;
+    canvas.addEventListener('touchstart', e => {
+        if (!running) return;
+        const t = e.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        e.preventDefault();
+    });
+    canvas.addEventListener('touchend', e => {
+        if (!running) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        const adx = Math.abs(dx), ady = Math.abs(dy);
+        if (adx < 10 && ady < 10) return;
+        if (adx > ady) {
+            if (dx > 0 && dir !== 'left') nextDir = 'right';
+            else if (dx < 0 && dir !== 'right') nextDir = 'left';
+        } else {
+            if (dy > 0 && dir !== 'up') nextDir = 'down';
+            else if (dy < 0 && dir !== 'down') nextDir = 'up';
+        }
+        e.preventDefault();
+    });
+
+    if (!('ontouchstart' in window)) {
+        document.addEventListener('keydown', e => {
+            if (!running) return;
+            if (e.key === 'ArrowUp' && dir !== 'down') nextDir = 'up';
+            else if (e.key === 'ArrowDown' && dir !== 'up') nextDir = 'down';
+            else if (e.key === 'ArrowLeft' && dir !== 'right') nextDir = 'left';
+            else if (e.key === 'ArrowRight' && dir !== 'left') nextDir = 'right';
+        });
+    }
+
+    // 启动
+    updateUI();
+    let gameLoop = setInterval(() => { update(); draw(); }, 150);
+    let enemyLoop = null;
+    let enemySpawner = null;
+    draw();
+}
+</script>
+<script defer src="https://cloud.umami.is/script.js" data-website-id="e903613c-da31-428d-8401-10034a9d5004"></script>
+
+</body>
+</html>

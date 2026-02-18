@@ -1,0 +1,126 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #1a2a6c, #2c3e50);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    padding: 20px;
+    background-attachment: fixed;
+}
+
+.container {
+    text-align: center;
+    max-width: 800px;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 25px;
+    padding: 45px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+h1 {
+    font-size: 3rem;
+    margin-bottom: 40px;
+    text-shadow: 0 3px 15px rgba(0, 0, 0, 0.4);
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    background: linear-gradient(to right, #4cc9f0, #2a9d8f);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.game-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 85%;
+    max-width: 450px;
+    padding: 24px;
+    margin: 25px 0;
+    background: linear-gradient(145deg, #4cc9f0, #2a9d8f);
+    color: white;
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 22px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+    border: none;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.game-btn::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: rotate(30deg);
+    transition: transform 0.6s;
+}
+
+.game-btn:hover::before {
+    transform: rotate(30deg) translate(50%, 50%);
+}
+
+.game-btn img {
+    margin-right: 18px;
+    height: 35px;
+    transition: transform 0.3s;
+}
+
+.game-btn:hover img {
+    transform: scale(1.1);
+}
+
+.game-btn:hover {
+    background: linear-gradient(145deg, #3aa7e9, #248a7e);
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+}
+
+.footer {
+    margin-top: 50px;
+    font-size: 1rem;
+    color: #a0d2ff;
+    opacity: 0.9;
+    line-height: 1.6;
+}
+
+.footer p {
+    margin: 8px 0;
+}
+
+/* 响应式优化 */
+@media (max-width: 600px) {
+    .container {
+        padding: 35px;
+    }
+    
+    h1 {
+        font-size: 2.4rem;
+    }
+    
+    .game-btn {
+        font-size: 1.4rem;
+        padding: 20px;
+    }
+    
+    .game-btn img {
+        height: 30px;
+    }
+}
