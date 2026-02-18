@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>密室逃脱 · 完美100关</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
+    body {
+      background: #0d0d1a;
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px;
+    }
+    h1 {
+      margin: 15px 0;
+      text-align: center;
+      font-size: 1.8rem;
+      color: #ffcc00;
+      text-shadow: 0 0 10px rgba(255,204,0,0.6);
+    }
+    #game-container {
+      width: 95%;
+      max-width: 800px;
+      background: #1a1a2e;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(0,0,0,0.7);
+      position: relative;
+    }
+    #room-view {
+      height: 400px;
+      position: relative;
+      background-size: cover;
+      background-position: center;
+    }
+    .room-bg.living   { background: linear-gradient(rgba(30,20,10,0.8), rgba(30,20,10,0.8)), #d7ccc8; }
+    .room-bg.bedroom  { background: linear-gradient(rgba(40,20,30,0.85), rgba(40,20,30,0.85)), #efebe9; }
+    .room-bg.basement { background: linear-gradient(rgba(10,10,20,0.95), rgba(10,10,20,0.95)), #37474f; }
+    .room-bg.attic    { background: linear-gradient(rgba(20,15,10,0.9), rgba(20,15,10,0.9)), #bcaaa4; }
+
+    /* 家具装饰（仅视觉） */
+    .furniture {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+      z-index: 1;
+      font-size: 12px;
+      color: #ccc;
+    }
+    .furniture .icon {
+      margin-bottom: 4px;
+      font-size: 24px;
+    }
+
+    .interactive {
+      position: absolute;
+      cursor: pointer;
+      font-size: 28px;
+      transition: transform 0.2s;
+      user-select: none;
+      z-index: 10;
+    }
+    .interactive:hover { transform: scale(1.25); }
+
+    #inventory-bar {
+      padding: 12px;
+      background: #0f3460;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .item-icon {
+      background: #16213e;
+      padding: 8px 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+    }
+    #level-info {
+      padding: 10px;
+      text-align: center;
+      background: #162447;
+      font-size: 1.1rem;
+    }
+    #message {
+      padding: 10px;
+      text-align: center;
+      min-height: 24px;
+      color: #a5d6a7;
+      font-weight: bold;
+    }
+    #password-input {
+      display: none;
+      padding: 12px;
+      text-align: center;
+      background: #1b263b;
+    }
+    #password-input input {
+      padding: 8px;
+      font-size: 16px;
+      width: 140px;
+      margin-right: 10px;
+      border-radius: 4px;
+      border: 1px solid #444;
+    }
+    button {
+      padding: 8px 16px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover { background: #2980b9; }
+
+    #win-screen {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.95);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      color: gold;
+    }
+    #win-screen h2 {
+      font-size: 3rem;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px gold;
+    }
+    #win-screen button {
+      padding: 12px 30px;
+      background: gold;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 50px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+      font-size: 1.1rem;
+    }
+
+    #hint-btn {
+      position: absolute;
+      bottom: 15px;
+      right: 15px;
+      background: #ff9800;
+      width: 45px;
+      height: 45px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 100;
+      font-size: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    #hint-btn:hover { background: #f57c00; }
+  </style>
+</head>
+<body>
+
+<h1>🔐 密室逃脱 · 完美100关</h1>
+
+<div id="game-container">
+  <div id="room-view" class="room-bg living"></div>
+  <div id="level-info">第 <span id="current-level">1</span> 关 / 100</div>
+  <div id="message">探索房间，寻找线索！</div>
+  <div id="password-input">
+    <input type="text" id="pwd" maxlength="6" placeholder="输入密码" autocomplete="off" />
+    <button onclick="submitPassword()">确认</button>
+    <div id="attempts" style="color:#ff9999; margin-top:6px; font-size:14px;"></div>
+  </div>
+  <div id="inventory-bar">
+    <span>🎒 背包：</span>
+    <div id="inventory-list">空</div>
+  </div>
+  <div id="hint-btn" title="点击获取提示">💡</div>
+</div>
+
+<div id="win-screen">
+  <h2>🏆 真正的逃脱大师！</h2>
+  <p>你用智慧破解了全部100道谜题！</p>
+  <button onclick="resetGame()">再挑战一次</button>
+</div>
+
+<script>
+const ITEMS = {
+  key: { name: '金钥匙', icon: '🔑' },
+  silverKey: { name: '银钥匙', icon: '🗝️' },
+  hammer: { name: '铁锤', icon: '🔨' },
+  flashlight: { name: '手电筒', icon: '🔦' },
+  battery: { name: '电池', icon: '🔋' },
+  magnifier: { name: '放大镜', icon: '🔍' },
+  notebook: { name: '日记本', icon: '📓' },
+  note: { name: '密码纸', icon: '📄' }
+};
+
+const ROOMS = ['living', 'bedroom', 'basement', 'attic'];
+
+const LEVELS = [
+  // 第1关：客厅 - 只有衣柜
+  {
+    room: 'living',
+    hotspots: [
+      { type: 'wardrobe', x: '40%', y: '50%', content: 'key', message: '衣柜里有一把金钥匙！' }
+    ]
+  },
+  // 第2关：客厅 - 墙画 + 开门
+  {
+    room: 'living',
+    hotspots: [{ type: 'painting', x: '70%', y: '30%', message: '画后面有个锁孔！' }],
+    action: { type: 'use', need: 'key', to: 'bedroom' },
+    hints: ["用金钥匙开门", "试试点击门"]
+  },
+  // ✅ 第3关：卧室 - 有真实家具 + 抽屉
+  {
+    room: 'bedroom',
+    hotspots: [
+      { type: 'drawer', x: '25%', y: '65%', content: 'flashlight', message: '床头柜的抽屉没锁，可以打开！' }
+    ]
+  },
+  // 第4关：密码钟表
+  {
+    room: 'bedroom',
+    hotspots: [{ type: 'clock', x: '60%', y: '20%', clue: '520', message: '老钟停在5:20' }],
+    action: { type: 'password', answer: '520' },
+    hints: ["时间就是密码", "5点20分", "试试520"]
+  },
+  // 第5关：模糊日记
+  {
+    room: 'bedroom',
+    hotspots: [{ type: 'notebook', x: '35%', y: '70%', requires: 'magnifier', text: '他说了520，我永远记得。', message: '字迹模糊…' }],
+    action: { type: 'password', answer: '520' },
+    hints: ["爱情数字", "中文谐音", "520=我爱你"]
+  },
+  // 后续关卡...
+  ...Array.from({ length: 95 }, (_, i) => {
+    const n = i + 6;
+    return {
+      room: ROOMS[n % 4],
+      hotspots: [],
+      action: null,
+      hints: []
+    };
+  })
+];
+
+let currentLevel = parseInt(localStorage.getItem('escapeFinalLevel')) || 0;
+let inventory = JSON.parse(localStorage.getItem('escapeFinalInventory')) || [];
+let passwordAttempts = 0;
+let hintLevel = 0;
+const MAX_ATTEMPTS = 3;
+
+if (currentLevel >= 100) {
+  document.getElementById('win-screen').style.display = 'flex';
+}
+
+function showMessage(text) {
+  document.getElementById('message').innerText = text;
+  setTimeout(() => {
+    if (currentLevel < 100) document.getElementById('message').innerText = '';
+  }, 2500);
+}
+
+function hasItem(itemKey) { return inventory.includes(itemKey); }
+function consumeItem(itemKey) {
+  inventory = inventory.filter(i => i !== itemKey);
+  saveProgress();
+  updateInventoryUI();
+}
+function collectItemNow(itemKey) {
+  if (!hasItem(itemKey)) {
+    inventory.push(itemKey);
+    saveProgress();
+    updateInventoryUI();
+    showMessage(`获得了【${ITEMS[itemKey].name}】！`);
+    if (currentLevel === 0) setTimeout(nextLevel, 1000);
+  }
+}
+function saveProgress() {
+  localStorage.setItem('escapeFinalLevel', currentLevel.toString());
+  localStorage.setItem('escapeFinalInventory', JSON.stringify(inventory));
+}
+function updateInventoryUI() {
+  const list = document.getElementById('inventory-list');
+  list.innerHTML = inventory.length ? '' : '空';
+  inventory.forEach(key => {
+    const div = document.createElement('div');
+    div.className = 'item-icon';
+    div.innerHTML = `<span>${ITEMS[key].icon}</span> ${ITEMS[key].name}`;
+    list.appendChild(div);
+  });
+}
+
+function tryOpenDoor() {
+  const level = LEVELS[currentLevel];
+  if (!level.action) return;
+
+  if (level.action.type === 'use' || level.action.type === 'use_consume') {
+    if (hasItem(level.action.need)) {
+      if (level.action.type === 'use_consume') {
+        consumeItem(level.action.need);
+        showMessage(`使用并消耗了【${ITEMS[level.action.need].name}】！`);
+      } else {
+        showMessage(`使用【${ITEMS[level.action.need].name}】成功开门！`);
+      }
+      setTimeout(nextLevel, 1200);
+    } else {
+      showMessage(`需要【${ITEMS[level.action.need].name}】才能开门！`);
+    }
+  } else if (level.action.type === 'password') {
+    document.getElementById('password-input').style.display = 'block';
+    document.getElementById('pwd').focus();
+    updateAttemptsUI();
+  }
+}
+
+function submitPassword() {
+  const input = document.getElementById('pwd').value.trim();
+  const level = LEVELS[currentLevel];
+  if (!level.action || !input) return;
+
+  if (input === level.action.answer) {
+    showMessage('密码正确！门开了！');
+    passwordAttempts = 0;
+    setTimeout(nextLevel, 1000);
+  } else {
+    passwordAttempts++;
+    if (passwordAttempts >= MAX_ATTEMPTS) {
+      showMessage("错误太多！退回上一关...");
+      setTimeout(() => {
+        currentLevel = Math.max(0, currentLevel - 1);
+        passwordAttempts = 0;
+        renderRoom();
+      }, 2000);
+    } else {
+      showMessage('密码错误！');
+      document.getElementById('pwd').value = '';
+      updateAttemptsUI();
+    }
+  }
+}
+
+function updateAttemptsUI() {
+  document.getElementById('attempts').innerText = 
+    passwordAttempts > 0 ? `已错 ${passwordAttempts}/${MAX_ATTEMPTS} 次` : '';
+}
+
+function nextLevel() {
+  currentLevel++;
+  saveProgress();
+  if (currentLevel >= 100) {
+    document.getElementById('win-screen').style.display = 'flex';
+    return;
+  }
+  renderRoom();
+}
+
+document.getElementById('hint-btn').onclick = function() {
+  const level = LEVELS[currentLevel];
+  const hints = level.hints || ["仔细检查每个角落！", "点击可疑物体", "答案就在房间里…"];
+  if (hintLevel < hints.length) {
+    showMessage(hints[hintLevel]);
+    hintLevel++;
+    this.style.opacity = '0.5';
+    setTimeout(() => this.style.opacity = '1', 5000);
+  }
+};
+
+// ✅ 核心：渲染房间 + 家具
+function renderRoom() {
+  const level = LEVELS[currentLevel];
+  if (!level) return;
+
+  document.getElementById('current-level').textContent = currentLevel + 1;
+  document.getElementById('password-input').style.display = 'none';
+  passwordAttempts = 0;
+  hintLevel = 0;
+  document.getElementById('attempts').innerText = '';
+
+  const roomView = document.getElementById('room-view');
+  roomView.className = 'room-bg ' + level.room;
+  roomView.innerHTML = '';
+
+  // ========== 卧室专属家具（第3关等）==========
+  if (level.room === 'bedroom') {
+    // 🛏️ 床
+    const bed = document.createElement('div');
+    bed.className = 'furniture';
+    bed.style.left = '8%';
+    bed.style.bottom = '15%';
+    bed.innerHTML = '<div class="icon">🛏️</div><div>床</div>';
+    roomView.appendChild(bed);
+
+    // 📚 书架
+    const shelf = document.createElement('div');
+    shelf.className = 'furniture';
+    shelf.style.left = '45%';
+    shelf.style.top = '10%';
+    shelf.innerHTML = '<div class="icon">📚</div><div>书架</div>';
+    roomView.appendChild(shelf);
+
+    // 🪞 镜子
+    const mirror = document.createElement('div');
+    mirror.className = 'furniture';
+    mirror.style.right = '12%';
+    mirror.style.top = '25%';
+    mirror.innerHTML = '<div class="icon">🪞</div><div>镜子</div>';
+    roomView.appendChild(mirror);
+  }
+
+  // ========== 门 ==========
+  if (level.action) {
+    const door = document.createElement('div');
+    door.className = 'interactive';
+    door.style.right = '40px';
+    door.style.bottom = '80px';
+    door.style.fontSize = '40px';
+    door.innerText = '🚪';
+    door.onclick = tryOpenDoor;
+    roomView.appendChild(door);
+  } else {
+    const deco = document.createElement('div');
+    deco.style.position = 'absolute';
+    deco.style.right = '40px';
+    deco.style.bottom = '80px';
+    deco.style.fontSize = '40px';
+    deco.style.opacity = '0.4';
+    deco.style.pointerEvents = 'none';
+    deco.innerText = '🚪';
+    roomView.appendChild(deco);
+  }
+
+  // ========== 可交互热点 ==========
+  if (level.hotspots) {
+    level.hotspots.forEach(hotspot => {
+      const el = document.createElement('div');
+      el.className = 'interactive';
+      el.style.left = hotspot.x;
+      el.style.top = hotspot.y;
+      el.style.fontSize = '28px';
+
+      if (hotspot.type === 'wardrobe') el.innerText = '🧺';
+      else if (hotspot.type === 'drawer') el.innerText = '📦';
+      else if (hotspot.type === 'bookshelf') el.innerText = '📚';
+      else if (hotspot.type === 'clock') el.innerText = '⏰';
+      else if (hotspot.type === 'mirror') el.innerText = '🪞';
+      else if (hotspot.type === 'painting') el.innerText = '🖼️';
+      else if (hotspot.type === 'notebook') el.innerText = '📓';
+
+      el.onclick = () => {
+        if (hotspot.content && !inventory.includes(hotspot.content)) {
+          collectItemNow(hotspot.content);
+        } else if (hotspot.clue) {
+          showMessage(hotspot.message || `发现线索：${hotspot.clue}`);
+        } else if (hotspot.requires) {
+          if (hasItem(hotspot.requires)) {
+            showMessage(hotspot.text);
+          } else {
+            showMessage(`需要【${ITEMS[hotspot.requires].name}】才能查看`);
+          }
+        } else {
+          showMessage(hotspot.message || '没什么特别的');
+        }
+      };
+
+      roomView.appendChild(el);
+    });
+  }
+
+  updateInventoryUI();
+
+  // 初始提示（仅第1、3关）
+  if (currentLevel === 0) {
+    setTimeout(() => showMessage('第1关：点击 🧺 衣柜 查找线索！'), 800);
+  } else if (currentLevel === 2) {
+    setTimeout(() => showMessage('第3关：点击 📦 抽屉 查找手电筒！'), 800);
+  }
+}
+
+function resetGame() {
+  localStorage.clear();
+  currentLevel = 0;
+  inventory = [];
+  passwordAttempts = 0;
+  hintLevel = 0;
+  document.getElementById('win-screen').style.display = 'none';
+  renderRoom();
+  showMessage('游戏已重置！');
+}
+
+document.getElementById('pwd').addEventListener('keypress', e => {
+  if (e.key === 'Enter') submitPassword();
+});
+
+renderRoom();
+</script>
+
+</body>
+</html>
