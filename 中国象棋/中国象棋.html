@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>中国象棋·人机对战完整版</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Microsoft YaHei", sans-serif;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f5f5f5;
+  }
+
+  .title {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #8b4513;
+  }
+
+  .info {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #a8322e;
+  }
+
+  .board {
+    position: relative;
+    width: 450px;
+    height: 500px;
+    background: #ecc47b;
+    border: 6px solid #8b4513;
+  }
+
+  .line {
+    position: absolute;
+    background: #333;
+  }
+
+  .row {
+    width: 450px;
+    height: 1px;
+  }
+
+  .col {
+    width: 1px;
+    height: 500px;
+  }
+
+  .river {
+    position: absolute;
+    top: 225px;
+    left: 50px;
+    width: 350px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: bold;
+    color: #8b4513;
+  }
+
+  .piece {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    position: absolute;
+    cursor: pointer;
+    user-select: none;
+    border: 2px solid #000;
+  }
+
+  .red {
+    background: #fff;
+    color: red;
+    border-color: red;
+  }
+
+  .black {
+    background: #222;
+    color: #fff;
+    border-color: #000;
+  }
+
+  .selected {
+    box-shadow: 0 0 0 3px #ff0;
+  }
+</style>
+</head>
+
+<body>
+  <div class="title">中国象棋·人机对战</div>
+  <div class="info" id="info">红方走棋</div>
+  <div class="board" id="board">
+    <div class="river">楚河 汉界</div>
+  </div>
+
+<script>
+  const GRID = 50;
+  const board = document.getElementById('board');
+  const info = document.getElementById('info');
+
+  let turn = 'red';
+  let selected = null;
+  let map = Array.from({ length: 10 }, () => Array(9).fill(null));
+  let gameOver = false;
+
+  // 棋子初始化：兵卒都前移2格
+  const pieces = [
+    // 黑方
+    { n: '车', c: 'black', x: 0, y: 9 },
+    { n: '马', c: 'black', x: 1, y: 9 },
+    { n: '象', c: 'black', x: 2, y: 9 },
+    { n: '士', c: 'black', x: 3, y: 9 },
+    { n: '将', c: 'black', x: 4, y: 9 },
+    { n: '士', c: 'black', x: 5, y: 9 },
+    { n: '象', c: 'black', x: 6, y: 9 },
+    { n: '马', c: 'black', x: 7, y: 9 },
+    { n: '车', c: 'black', x: 8, y: 9 },
+    { n: '炮', c: 'black', x: 1, y: 7 },
+    { n: '炮', c: 'black', x: 7, y: 7 },
+    { n: '卒', c: 'black', x: 0, y: 6 },
+    { n: '卒', c: 'black', x: 2, y: 6 },
+    { n: '卒', c: 'black', x: 4, y: 6 },
+    { n: '卒', c: 'black', x: 6, y: 6 },
+    { n: '卒', c: 'black', x: 8, y: 6 },
+
+    // 红方
+    { n: '车', c: 'red', x: 0, y: 0 },
+    { n: '马', c: 'red', x: 1, y: 0 },
+    { n: '相', c: 'red', x: 2, y: 0 },
+    { n: '仕', c: 'red', x: 3, y: 0 },
+    { n: '帅', c: 'red', x: 4, y: 0 },
+    { n: '仕', c: 'red', x: 5, y: 0 },
+    { n: '相', c: 'red', x: 6, y: 0 },
+    { n: '马', c: 'red', x: 7, y: 0 },
+    { n: '车', c: 'red', x: 8, y: 0 },
+    { n: '炮', c: 'red', x: 1, y: 2 },
+    { n: '炮', c: 'red', x: 7, y: 2 },
+    { n: '兵', c: 'red', x: 0, y: 3 },
+    { n: '兵', c: 'red', x: 2, y: 3 },
+    { n: '兵', c: 'red', x: 4, y: 3 },
+    { n: '兵', c: 'red', x: 6, y: 3 },
+    { n: '兵', c: 'red', x: 8, y: 3 },
+  ];
+
+  // 画棋盘线
+  function drawBoard() {
+    for (let y = 0; y <= 9; y++) {
+      const row = document.createElement('div');
+      row.className = 'line row';
+      row.style.top = y * GRID + 'px';
+      if (y === 4 || y === 5) {
+        row.style.width = '50px';
+        board.appendChild(row);
+        const r2 = row.cloneNode();
+        r2.style.left = '400px';
+        board.appendChild(r2);
+      } else {
+        board.appendChild(row);
+      }
+    }
+
+    for (let x = 0; x <= 8; x++) {
+      const col = document.createElement('div');
+      col.className = 'line col';
+      col.style.left = x * GRID + 'px';
+      board.appendChild(col);
+    }
+  }
+
+  // 创建棋子
+  function createPieces() {
+    pieces.forEach(info => {
+      const el = document.createElement('div');
+      el.className = 'piece ' + info.c;
+      el.textContent = info.n;
+      el.style.left = info.x * GRID + 4 + 'px';
+      el.style.top = info.y * GRID + 4 + 'px';
+      el.x = info.x;
+      el.y = info.y;
+      el.color = info.c;
+      el.name = info.n;
+      map[el.y][el.x] = el;
+      el.onclick = () => clickPiece(el);
+      board.appendChild(el);
+    });
+  }
+
+  // 点击棋子
+  function clickPiece(p) {
+    if (gameOver || p.color !== turn) return;
+    if (selected) selected.classList.remove('selected');
+    selected = p;
+    p.classList.add('selected');
+  }
+
+  // 点击棋盘移动
+  board.onclick = e => {
+    if (gameOver || !selected || e.target.classList.contains('piece')) return;
+    const rect = board.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / GRID);
+    const y = Math.floor((e.clientY - rect.top) / GRID);
+    if (x < 0 || x > 8 || y < 0 || y > 9) return;
+
+    if (canMove(selected, x, y)) {
+      move(selected, x, y);
+      checkWin();
+      if (gameOver) return;
+      turn = 'black';
+      info.textContent = '电脑思考中...';
+      setTimeout(aiMove, 700);
+    }
+    selected.classList.remove('selected');
+    selected = null;
+  };
+
+  // 移动棋子
+  function move(p, tx, ty) {
+    if (map[ty][tx]) map[ty][tx].remove();
+    map[p.y][p.x] = null;
+    p.x = tx;
+    p.y = ty;
+    map[ty][tx] = p;
+    p.style.left = tx * GRID + 4 + 'px';
+    p.style.top = ty * GRID + 4 + 'px';
+  }
+
+  // 走棋规则
+  function canMove(p, tx, ty) {
+    const t = map[ty][tx];
+    if (t && t.color === p.color) return false;
+    const dx = Math.abs(tx - p.x);
+    const dy = Math.abs(ty - p.y);
+    const sx = tx - p.x;
+    const sy = ty - p.y;
+
+    // 帅 将
+    if (p.name === '帅' || p.name === '将') {
+      const inRed = tx >= 3 && tx <=5 && ty >=0 && ty <=2;
+      const inBlack = tx >=3 && tx <=5 && ty >=7 && ty <=9;
+      if (p.color === 'red' && !inRed) return false;
+      if (p.color === 'black' && !inBlack) return false;
+      return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
+    }
+
+    // 士 仕
+    if (p.name === '士' || p.name === '仕') {
+      const inRed = tx >=3 && tx <=5 && ty >=0 && ty <=2;
+      const inBlack = tx >=3 && tx <=5 && ty >=7 && ty <=9;
+      if (p.color === 'red' && !inRed) return false;
+      if (p.color === 'black' && !inBlack) return false;
+      return dx === 1 && dy === 1;
+    }
+
+    // 象 相
+    if (p.name === '象' || p.name === '相') {
+      if (p.color === 'red' && ty > 4) return false;
+      if (p.color === 'black' && ty < 5) return false;
+      if (dx !==2 || dy !==2) return false;
+      const mx = p.x + sx/2;
+      const my = p.y + sy/2;
+      if (map[my][mx]) return false;
+      return true;
+    }
+
+    // 马
+    if (p.name === '马') {
+      if (!((dx ===1 && dy ===2) || (dx ===2 && dy ===1))) return false;
+      let lx = p.x, ly = p.y;
+      if (dx ===2) lx += sx/2;
+      else ly += sy/2;
+      if (map[ly][lx]) return false;
+      return true;
+    }
+
+    // 车
+    if (p.name === '车') {
+      if (dx !==0 && dy !==0) return false;
+      if (dx ===0) {
+        const step = sy >0 ? 1 : -1;
+        for(let i=p.y+step; i!==ty; i+=step) {
+          if (map[i][p.x]) return false;
+        }
+      } else {
+        const step = sx >0 ?1 : -1;
+        for(let i=p.x+step; i!==tx; i+=step) {
+          if (map[p.y][i]) return false;
+        }
+      }
+      return true;
+    }
+
+    // 炮
+    if (p.name === '炮') {
+      if (dx !==0 && dy !==0) return false;
+      let cnt =0;
+      if (dx ===0) {
+        const step = sy>0?1:-1;
+        for(let i=p.y+step; i!==ty; i+=step) {
+          if (map[i][p.x]) cnt++;
+        }
+      } else {
+        const step = sx>0?1:-1;
+        for(let i=p.x+step; i!==tx; i+=step) {
+          if (map[p.y][i]) cnt++;
+        }
+      }
+      if (!t) return cnt ===0;
+      else return cnt ===1;
+    }
+
+    // 兵 卒
+    if (p.name === '兵' || p.name === '卒') {
+      const cross = p.color === 'red' ? p.y>4 : p.y<5;
+      if (!cross) {
+        if (p.color === 'red' && sy !==1) return false;
+        if (p.color === 'black' && sy !==-1) return false;
+        return dx ===0 && dy ===1;
+      } else {
+        return (dx ===1 && dy ===0) || (dx ===0 && dy ===1);
+      }
+    }
+    return false;
+  }
+
+  // AI走棋
+  function aiMove() {
+    if (gameOver) return;
+    const all = [];
+    for(let y=0;y<10;y++){
+      for(let x=0;x<9;x++){
+        const p = map[y][x];
+        if(p && p.color === 'black'){
+          const moves = [];
+          for(let ty=0;ty<10;ty++){
+            for(let tx=0;tx<9;tx++){
+              if(canMove(p,tx,ty)) moves.push({tx,ty});
+            }
+          }
+          if(moves.length>0) all.push({p,moves});
+        }
+      }
+    }
+    if(all.length===0){
+      info.textContent('红方胜！');
+      gameOver=true;
+      return;
+    }
+    const pick = all[Math.floor(Math.random()*all.length)];
+    const mv = pick.moves[Math.floor(Math.random()*pick.moves.length)];
+    move(pick.p, mv.tx, mv.ty);
+    checkWin();
+    if(gameOver) return;
+    turn = 'red';
+    info.textContent = '红方走棋';
+  }
+
+  // 判断输赢
+  function checkWin() {
+    let hasRed = false, hasBlack = false;
+    for(let row of map) for(let p of row){
+      if(!p) continue;
+      if(p.name === '帅') hasRed = true;
+      if(p.name === '将') hasBlack = true;
+    }
+    if(!hasRed){
+      info.textContent = '黑方胜！';
+      gameOver = true;
+    }
+    if(!hasBlack){
+      info.textContent = '红方胜！';
+      gameOver = true;
+    }
+  }
+
+  // 启动
+  drawBoard();
+  createPieces();
+</script>
+</body>
+</html>
