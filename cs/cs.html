@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>真人CS枪战 3D - 小队作战版</title>
+<style>
+/* ==================== 样式部分 (保持原有风格) ==================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; overflow-x: hidden; }
+#homepage { display: block; min-height: 100vh; position: relative; }
+.hero-banner { height: 80vh; background: url('https://wanx.alicdn.com/wanx/1770684580164780122/text_to_image_lite_v2/5d7355f3e6474efa9af5374d3c50f832_0_visibleWatermark.png') center/cover no-repeat; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; }
+.hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); }
+.hero-content { position: relative; z-index: 10; max-width: 800px; padding: 0 20px; }
+.hero-content h1 { font-size: 4rem; margin-bottom: 20px; text-shadow: 0 0 20px rgba(255, 0, 0, 0.7); background: linear-gradient(45deg, #ff8c00, #ff0000); -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: pulse 2s infinite; }
+.hero-content p { font-size: 1.5rem; margin-bottom: 30px; line-height: 1.6; }
+.btn { display: inline-block; padding: 15px 40px; font-size: 1.3rem; font-weight: bold; text-decoration: none; background: linear-gradient(45deg, #ff8c00, #ff0000); color: white; border: none; border-radius: 50px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 0 30px rgba(255, 0, 0, 0.5); }
+.btn:hover { transform: translateY(-5px) scale(1.05); box-shadow: 0 0 50px rgba(255, 140, 0, 0.8); }
+.features { padding: 80px 20px; background: rgba(0, 0, 0, 0.7); }
+.features h2 { text-align: center; font-size: 2.5rem; margin-bottom: 50px; color: #ff8c00; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; max-width: 1200px; margin: 0 auto; }
+.feature-card { background: rgba(30, 30, 46, 0.8); padding: 30px; border-radius: 15px; border: 2px solid #ff8c00; text-align: center; transition: transform 0.3s ease; }
+.feature-card:hover { transform: translateY(-10px); border-color: #ff0000; }
+.feature-card h3 { color: #ff8c00; margin-bottom: 15px; font-size: 1.5rem; }
+.feature-card p { line-height: 1.6; color: #ccc; }
+.characters { padding: 80px 20px; background: linear-gradient(135deg, #0f0f23 0%, #16213e 100%); }
+.characters h2 { text-align: center; font-size: 2.5rem; margin-bottom: 50px; color: #00ff00; }
+.character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px; max-width: 1200px; margin: 0 auto; }
+.character-card { background: rgba(20, 20, 36, 0.9); border-radius: 15px; overflow: hidden; border: 2px solid #00ff00; text-align: center; }
+.character-image { width: 100%; height: 300px; background: url('https://wanx.alicdn.com/wanx/1770684580164780122/text_to_image_lite_v2/6b2d99341ad84ee193c8ce48c4e56a70_0_visibleWatermark.png') center/contain no-repeat; background-size: 80%; background-position: center; }
+.character-info { padding: 20px; }
+.character-info h3 { color: #00ff00; margin-bottom: 10px; font-size: 1.4rem; }
+.character-info p { color: #aaa; line-height: 1.5; }
+nav { position: fixed; top: 0; width: 100%; background: rgba(0, 0, 0, 0.8); padding: 15px 0; z-index: 1000; backdrop-filter: blur(10px); }
+.nav-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; }
+.logo { font-size: 1.8rem; font-weight: bold; color: #ff8c00; text-decoration: none; }
+.nav-links { display: flex; gap: 30px; }
+.nav-links a { color: #fff; text-decoration: none; font-size: 1.1rem; transition: color 0.3s ease; }
+.nav-links a:hover { color: #ff8c00; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+@media (max-width: 768px) { .hero-content h1 { font-size: 2.5rem; } .hero-content p { font-size: 1.2rem; } .btn { padding: 12px 30px; font-size: 1.1rem; } .nav-links { display: none; } }
+#game-container { display: none; position: relative; width: 100vw; height: 100vh; }
+#canvas-container { width: 100%; height: 100%; }
+#crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; pointer-events: none; z-index: 100; }
+#crosshair::before, #crosshair::after { content: ''; position: absolute; background: #0f0; }
+#crosshair::before { width: 2px; height: 30px; left: 50%; transform: translateX(-50%); }
+#crosshair::after { width: 30px; height: 2px; top: 50%; transform: translateY(-50%); }
+#ui-panel { position: absolute; top: 20px; left: 20px; color: #0f0; font-size: 18px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 100; background: rgba(0,0,0,0.6); padding: 15px 20px; border-radius: 10px; border: 2px solid #0f0; }
+#ui-panel div { margin: 8px 0; }
+#ui-panel span { color: #fff; font-weight: bold; }
+#weapon-info { position: absolute; bottom: 30px; right: 30px; color: #0f0; font-size: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 100; background: rgba(0,0,0,0.6); padding: 15px 25px; border-radius: 10px; border: 2px solid #0f0; text-align: right; }
+#menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; }
+#menu h1 { color: #0f0; font-size: 48px; margin-bottom: 30px; text-shadow: 0 0 20px #0f0; text-align: center; }
+#menu p { color: #fff; font-size: 18px; margin: 10px 0; text-align: center; }
+#menu button { margin: 15px; padding: 15px 50px; font-size: 22px; background: linear-gradient(180deg, #0f0, #080); border: none; border-radius: 10px; color: #000; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+#menu button:hover { transform: scale(1.1); box-shadow: 0 0 30px #0f0; }
+.controls-info { color: #aaa; font-size: 14px; margin-top: 30px; text-align: center; line-height: 1.8; }
+.controls-info kbd { background: #333; padding: 3px 8px; border-radius: 4px; border: 1px solid #555; }
+#damage-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(transparent 50%, rgba(255,0,0,0.5) 100%); pointer-events: none; z-index: 90; opacity: 0; transition: opacity 0.3s; }
+#kill-feed { position: absolute; top: 80px; right: 20px; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; }
+.kill-message { background: rgba(0, 100, 255, 0.7); color: #fff; padding: 8px 15px; margin: 5px 0; border-radius: 5px; animation: fadeOut 3s forwards; font-size: 14px; }
+@keyframes fadeOut { 0% { opacity: 1; transform: translateX(0); } 80% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(50px); } }
+#ammo-warning { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #f00; font-size: 32px; font-weight: bold; text-shadow: 2px 2px 4px #000; z-index: 150; display: none; animation: blink 0.5s infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+#minimap { position: absolute; bottom: 30px; left: 30px; width: 150px; height: 150px; background: rgba(0,0,0,0.7); border: 2px solid #0f0; border-radius: 10px; z-index: 100; overflow: hidden; }
+#minimap canvas { width: 100%; height: 100%; }
+/* 新增：队友状态提示 */
+.teammate-status { color: #00ffff; }
+</style>
+</head>
+<body>
+
+<!-- 主页部分 (保持不变) -->
+<div id="homepage">
+<nav>
+<div class="nav-container">
+<a href="#" class="logo">🔥 REAL COMBAT</a>
+<div class="nav-links">
+<a href="#home">首页</a>
+<a href="#features">特性</a>
+<a href="#characters">角色</a>
+<a href="#play" id="play-link">开始游戏</a>
+</div>
+</div>
+</nav>
+<div class="hero-banner">
+<div class="hero-overlay"></div>
+<div class="hero-content">
+<h1>真人CS枪战 3D</h1>
+<p>带领你的小队，消灭所有红色敌军！</p>
+<a href="#play" class="btn" id="start-game-btn">立即游戏</a>
+</div>
+</div>
+<section class="features" id="features">
+<h2>🎮 游戏特性</h2>
+<div class="feature-grid">
+<div class="feature-card"><h3>小队作战</h3><p>新增 AI 队友系统，自动跟随并协助你攻击敌人</p></div>
+<div class="feature-card"><h3>真实人形角色</h3><p>玩家、队友、敌人均为独立人形模型，敌我分明</p></div>
+<div class="feature-card"><h3>3D开放战场</h3><p>大型3D地图包含建筑物、掩体和障碍物</p></div>
+<div class="feature-card"><h3>智能AI</h3><p>敌人会追击，队友会掩护，体验真实战场</p></div>
+<div class="feature-card"><h3>多种武器</h3><p>AK-47、M4A1、AWP 随意切换</p></div>
+<div class="feature-card"><h3>无需安装</h3><p>浏览器直接运行</p></div>
+</div>
+</section>
+<section class="characters" id="characters">
+<h2>👤 人形角色</h2>
+<div class="character-grid">
+<div class="character-card"><div class="character-image"></div><div class="character-info"><h3>突击兵</h3><p>高机动性，适合近距离作战</p></div></div>
+<div class="character-card"><div class="character-image"></div><div class="character-info"><h3>特种兵</h3><p>平衡性能，中距离交火</p></div></div>
+<div class="character-card"><div class="character-image"></div><div class="character-info"><h3>狙击手</h3><p>超远射程，一击必杀</p></div></div>
+<div class="character-card"><div class="character-image"></div><div class="character-info"><h3>重装兵</h3><p>高生命值，前线推进</p></div></div>
+</div>
+</section>
+</div>
+
+<!-- 游戏页面 -->
+<div id="game-container">
+<div id="canvas-container"></div>
+<div id="crosshair"></div>
+<div id="ui-panel">
+<div>❤️ 生命值：<span id="health">100</span></div>
+<div>👥 存活队友：<span id="teammates-left" class="teammate-status">0</span></div>
+<div>🎯 击杀数：<span id="kills">0</span></div>
+<div>💀 死亡数：<span id="deaths">0</span></div>
+<div>⭐ 得分：<span id="score">0</span></div>
+<div>👾 敌人剩余：<span id="enemies-left">0</span></div>
+</div>
+<div id="weapon-info">
+<div>🔫 <span id="weapon-name">AK-47</span></div>
+<div>📦 弹药：<span id="ammo">30</span> / <span id="total-ammo">90</span></div>
+</div>
+<div id="kill-feed"></div>
+<div id="damage-overlay"></div>
+<div id="ammo-warning">⚠️ 弹药不足! 按 R 换弹</div>
+<div id="minimap"><canvas id="minimap-canvas" width="150" height="150"></canvas></div>
+<div id="menu">
+<h1>🎮 真人CS枪战 3D</h1>
+<p>带领小队消灭所有红色敌人！</p>
+<button id="start-btn">开始游戏</button>
+<div class="controls-info">
+<p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 | <kbd>鼠标</kbd> 瞄准</p>
+<p><kbd>左键</kbd> 射击 | <kbd>R</kbd> 换弹 | <kbd>空格</kbd> 跳跃</p>
+<p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 | <kbd>ESC</kbd> 暂停</p>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ==================== 页面切换功能 ====================
+document.getElementById('start-game-btn').addEventListener('click', function(e) {
+e.preventDefault();
+document.getElementById('homepage').style.display = 'none';
+document.getElementById('game-container').style.display = 'block';
+initGame();
+});
+document.getElementById('play-link').addEventListener('click', function(e) {
+e.preventDefault();
+document.getElementById('homepage').style.display = 'none';
+document.getElementById('game-container').style.display = 'block';
+initGame();
+});
+
+// ==================== 游戏配置 ====================
+const CONFIG = {
+playerSpeed: 0.15,
+playerRunSpeed: 0.25,
+jumpForce: 0.3,
+gravity: 0.015,
+mouseSensitivity: 0.002,
+enemySpeed: 0.05,
+teammateSpeed: 0.12, // 队友速度略慢于玩家跑步，便于跟随
+enemySpawnCount: 12,
+teammateCount: 3,     // 初始队友数量
+bulletDamage: 25,
+teammateDamage: 20,   // 队友伤害
+enemyDamage: 10,
+maxHealth: 100
+};
+
+// ==================== 游戏状态 ====================
+let gameState = {
+isPlaying: false,
+isPaused: false,
+health: 100,
+kills: 0,
+deaths: 0,
+score: 0,
+currentWeapon: 0
+};
+
+// ==================== 武器系统 ====================
+const weapons = [
+{ name: 'AK-47', damage: 25, fireRate: 100, ammo: 30, totalAmmo: 90, reloadTime: 2000, automatic: true },
+{ name: 'M4A1', damage: 22, fireRate: 80, ammo: 35, totalAmmo: 105, reloadTime: 1800, automatic: true },
+{ name: 'AWP', damage: 100, fireRate: 1500, ammo: 5, totalAmmo: 20, reloadTime: 3000, automatic: false }
+];
+let currentWeapon = { ...weapons[0] };
+let isReloading = false;
+let lastFireTime = 0;
+let isMouseDown = false;
+
+// ==================== Three.js 变量 ====================
+let scene, camera, renderer;
+let playerVelocity = new THREE.Vector3();
+let isOnGround = true;
+let enemies = [];
+let teammates = []; // 【新增】队友数组
+let bullets = [];
+let obstacles = [];
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+
+// 玩家身体模型
+let playerBodyGroup; 
+
+// ==================== 初始化游戏 ====================
+function initGame() {
+scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 2, 0);
+
+renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+setupLights();
+createMap();
+createPlayer(); 
+spawnEnemies();
+spawnTeammates(); // 【新增】生成队友
+setupEventListeners();
+animate();
+updateUI();
+}
+
+// ==================== 灯光设置 ====================
+function setupLights() {
+const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+directionalLight.position.set(50, 100, 50);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 500;
+directionalLight.shadow.camera.left = -100;
+directionalLight.shadow.camera.right = 100;
+directionalLight.shadow.camera.top = 100;
+directionalLight.shadow.camera.bottom = -100;
+scene.add(directionalLight);
+const pointLight1 = new THREE.PointLight(0xffaa00, 0.5, 50);
+pointLight1.position.set(20, 10, 20);
+scene.add(pointLight1);
+const pointLight2 = new THREE.PointLight(0xffaa00, 0.5, 50);
+pointLight2.position.set(-20, 10, -20);
+scene.add(pointLight2);
+}
+
+// ==================== 创建地图 ====================
+function createMap() {
+const groundGeometry = new THREE.PlaneGeometry(200, 200);
+const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x3a5f0b, roughness: 0.8, metalness: 0.2 });
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+createObstacles();
+createBuildings();
+createDecorations();
+}
+
+function createObstacles() {
+const obstacleConfigs = [
+{ pos: [10, 1.5, 10], size: [3, 3, 3], color: 0x8b4513 },
+{ pos: [-15, 1, 20], size: [4, 2, 2], color: 0x696969 },
+{ pos: [25, 2, -10], size: [2, 4, 2], color: 0x8b4513 },
+{ pos: [-20, 1.5, -25], size: [3, 3, 3], color: 0x696969 },
+{ pos: [30, 1, 30], size: [5, 2, 2], color: 0x8b4513 },
+{ pos: [-30, 2, 15], size: [2, 4, 3], color: 0x696969 },
+{ pos: [0, 1, 40], size: [6, 2, 2], color: 0x8b4513 },
+{ pos: [0, 1, -40], size: [6, 2, 2], color: 0x696969 },
+{ pos: [40, 1.5, 0], size: [2, 3, 6], color: 0x8b4513 },
+{ pos: [-40, 1.5, 0], size: [2, 3, 6], color: 0x696969 },
+];
+obstacleConfigs.forEach(config => {
+const geometry = new THREE.BoxGeometry(config.size[0], config.size[1], config.size[2]);
+const material = new THREE.MeshStandardMaterial({ color: config.color, roughness: 0.7, metalness: 0.3 });
+const obstacle = new THREE.Mesh(geometry, material);
+obstacle.position.set(...config.pos);
+obstacle.castShadow = true;
+obstacle.receiveShadow = true;
+scene.add(obstacle);
+obstacles.push(obstacle);
+});
+}
+
+function createBuildings() {
+const buildingConfigs = [
+{ pos: [50, 10, 50], size: [15, 20, 15], color: 0x4a4a4a },
+{ pos: [-50, 8, -50], size: [12, 16, 12], color: 0x5a5a5a },
+{ pos: [50, 12, -50], size: [10, 24, 10], color: 0x4a4a4a },
+{ pos: [-50, 10, 50], size: [14, 20, 14], color: 0x5a5a5a },
+];
+buildingConfigs.forEach(config => {
+const geometry = new THREE.BoxGeometry(config.size[0], config.size[1], config.size[2]);
+const material = new THREE.MeshStandardMaterial({ color: config.color, roughness: 0.6, metalness: 0.4 });
+const building = new THREE.Mesh(geometry, material);
+building.position.set(...config.pos);
+building.castShadow = true;
+building.receiveShadow = true;
+scene.add(building);
+obstacles.push(building);
+});
+}
+
+function createDecorations() {
+for (let i = 0; i < 20; i++) {
+const angle = Math.random() * Math.PI * 2;
+const radius = 60 + Math.random() * 30;
+const x = Math.cos(angle) * radius;
+const z = Math.sin(angle) * radius;
+const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 3, 8);
+const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+trunk.position.set(x, 1.5, z);
+trunk.castShadow = true;
+scene.add(trunk);
+const leavesGeometry = new THREE.ConeGeometry(2, 5, 8);
+const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+leaves.position.set(x, 5, z);
+leaves.castShadow = true;
+scene.add(leaves);
+}
+for (let i = 0; i < 15; i++) {
+const x = (Math.random() - 0.5) * 80;
+const z = (Math.random() - 0.5) * 80;
+const geometry = new THREE.CylinderGeometry(0.8, 1, 1, 8);
+const material = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
+const sandbag = new THREE.Mesh(geometry, material);
+sandbag.position.set(x, 0.5, z);
+sandbag.castShadow = true;
+sandbag.receiveShadow = true;
+scene.add(sandbag);
+obstacles.push(sandbag);
+}
+}
+
+// ==================== 创建玩家 ====================
+function createPlayer() {
+playerBodyGroup = new THREE.Group();
+// 玩家颜色：蓝色
+const uniformColor = 0x0066cc; 
+const skinColor = 0xffccaa;    
+const vestColor = 0x333333;    
+const helmetColor = 0x004488;
+
+createHumanModel(playerBodyGroup, uniformColor, skinColor, vestColor, helmetColor, false);
+
+playerBodyGroup.position.copy(camera.position);
+playerBodyGroup.position.y -= 1.0;
+scene.add(playerBodyGroup);
+createWeaponModel();
+}
+
+// ==================== 【通用】创建人形模型函数 ====================
+function createHumanModel(group, uniformColor, skinColor, vestColor, helmetColor, isEnemy) {
+// 躯干
+const bodyGeo = new THREE.BoxGeometry(0.6, 0.7, 0.3);
+const bodyMat = new THREE.MeshStandardMaterial({ color: uniformColor });
+const body = new THREE.Mesh(bodyGeo, bodyMat);
+body.position.y = 0.35;
+body.castShadow = true;
+group.add(body);
+
+// 战术背心
+const vestGeo = new THREE.BoxGeometry(0.62, 0.4, 0.32);
+const vestMat = new THREE.MeshStandardMaterial({ color: vestColor });
+const vest = new THREE.Mesh(vestGeo, vestMat);
+vest.position.y = 0.5;
+vest.castShadow = true;
+group.add(vest);
+
+// 头部
+const headGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+const headMat = new THREE.MeshStandardMaterial({ color: skinColor });
+const head = new THREE.Mesh(headGeo, headMat);
+head.position.y = 0.85; 
+head.castShadow = true;
+group.add(head);
+
+// 头盔
+const helmetGeo = new THREE.BoxGeometry(0.27, 0.15, 0.27);
+const helmetMat = new THREE.MeshStandardMaterial({ color: helmetColor });
+const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+helmet.position.y = 0.95;
+helmet.castShadow = true;
+group.add(helmet);
+
+// 手臂
+const armGeo = new THREE.BoxGeometry(0.15, 0.5, 0.15);
+const armMat = new THREE.MeshStandardMaterial({ color: uniformColor });
+const leftArm = new THREE.Mesh(armGeo, armMat);
+leftArm.position.set(-0.4, 0.3, 0.1);
+leftArm.rotation.x = -0.5;
+leftArm.castShadow = true;
+group.add(leftArm);
+
+const rightArm = new THREE.Mesh(armGeo, armMat);
+rightArm.position.set(0.4, 0.3, 0.1);
+rightArm.rotation.x = -0.5;
+rightArm.castShadow = true;
+group.add(rightArm);
+
+// 腿部
+const legGeo = new THREE.BoxGeometry(0.18, 0.8, 0.2);
+const legMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+const leftLeg = new THREE.Mesh(legGeo, legMat);
+leftLeg.position.set(-0.15, -0.4, 0);
+leftLeg.castShadow = true;
+group.add(leftLeg);
+
+const rightLeg = new THREE.Mesh(legGeo, legMat);
+rightLeg.position.set(0.15, -0.4, 0);
+rightLeg.castShadow = true;
+group.add(rightLeg);
+
+// 如果是敌人或队友，可以加一个简单的武器模型在手上
+if (!isEnemy) { // 这里简化，暂不给 NPC 加手持武器模型，只用射线检测
+    // 可以在这里添加 NPC 持枪模型
+}
+}
+
+// ==================== 创建武器模型 (玩家用) ====================
+let weaponModel;
+function createWeaponModel() {
+weaponModel = new THREE.Group();
+const bodyGeometry = new THREE.BoxGeometry(0.1, 0.15, 0.6);
+const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 });
+const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+weaponModel.add(body);
+const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8);
+const barrelMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9 });
+const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+barrel.rotation.x = Math.PI / 2;
+barrel.position.set(0, 0.05, -0.5);
+weaponModel.add(barrel);
+const scopeGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.15, 8);
+const scopeMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+const scope = new THREE.Mesh(scopeGeometry, scopeMaterial);
+scope.rotation.z = Math.PI / 2;
+scope.position.set(0, 0.12, -0.2);
+weaponModel.add(scope);
+weaponModel.position.set(0.3, -0.3, -0.5);
+camera.add(weaponModel);
+scene.add(camera);
+}
+
+// ==================== 【新增】生成队友 ====================
+function spawnTeammates() {
+// 清除旧队友
+teammates.forEach(t => scene.remove(t.mesh));
+teammates = [];
+
+for (let i = 0; i < CONFIG.teammateCount; i++) {
+spawnTeammate(i);
+}
+updateUI();
+}
+
+function spawnTeammate(index) {
+const teammateGroup = new THREE.Group();
+// 队友颜色：绿色 (区别于玩家的蓝色，敌人的红色)
+const uniformColor = 0x006600; 
+const skinColor = 0xffccaa;    
+const vestColor = 0x222222;    
+const helmetColor = 0x004400;
+
+createHumanModel(teammateGroup, uniformColor, skinColor, vestColor, helmetColor, false);
+
+// 随机出生在玩家附近
+const angle = (Math.PI * 2 / CONFIG.teammateCount) * index + (Math.random() * 0.5 - 0.25);
+const distance = 5 + Math.random() * 5;
+teammateGroup.position.set(
+Math.cos(angle) * distance,
+0,
+Math.sin(angle) * distance
+);
+
+scene.add(teammateGroup);
+
+teammates.push({
+mesh: teammateGroup,
+health: 100,
+state: 'follow', // follow, attack
+lastShot: 0,
+target: null
+});
+}
+
+// ==================== 创建敌人 ====================
+function spawnEnemies() {
+enemies.forEach(enemy => scene.remove(enemy.mesh));
+enemies = [];
+for (let i = 0; i < CONFIG.enemySpawnCount; i++) {
+spawnEnemy();
+}
+updateUI();
+}
+
+function spawnEnemy() {
+const enemyGroup = new THREE.Group();
+// 敌人颜色：红色
+const uniformColor = 0xcc0000;
+const skinColor = 0xffccaa;
+const vestColor = 0x440000;
+const helmetColor = 0x880000;
+
+createHumanModel(enemyGroup, uniformColor, skinColor, vestColor, helmetColor, true);
+
+const angle = Math.random() * Math.PI * 2;
+const distance = 30 + Math.random() * 40;
+enemyGroup.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+scene.add(enemyGroup);
+enemies.push({ mesh: enemyGroup, health: 100, speed: CONFIG.enemySpeed + Math.random() * 0.02, lastAttack: 0 });
+}
+
+// ==================== 事件监听 ====================
+const keys = {};
+let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+function setupEventListeners() {
+document.addEventListener('keydown', (e) => {
+keys[e.code] = true;
+if (e.key === '1') switchWeapon(0);
+if (e.key === '2') switchWeapon(1);
+if (e.key === '3') switchWeapon(2);
+if (e.code === 'KeyR') reload();
+if (e.code === 'Escape') togglePause();
+});
+document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+document.addEventListener('mousemove', (e) => {
+if (gameState.isPlaying && !gameState.isPaused && document.pointerLockElement) {
+euler.setFromQuaternion(camera.quaternion);
+euler.y -= e.movementX * CONFIG.mouseSensitivity;
+euler.x -= e.movementY * CONFIG.mouseSensitivity;
+euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+camera.quaternion.setFromEuler(euler);
+}
+});
+document.addEventListener('mousedown', (e) => {
+if (e.button === 0) {
+isMouseDown = true;
+if (gameState.isPlaying && !gameState.isPaused && document.pointerLockElement) shoot();
+}
+});
+document.addEventListener('mouseup', () => { isMouseDown = false; });
+window.addEventListener('resize', () => {
+camera.aspect = window.innerWidth / window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth, window.innerHeight);
+});
+document.getElementById('start-btn').addEventListener('click', startGame);
+}
+
+// ==================== 游戏控制 ====================
+function startGame() {
+document.getElementById('menu').style.display = 'none';
+document.getElementById('canvas-container').requestPointerLock();
+gameState.isPlaying = true;
+gameState.isPaused = false;
+gameState.health = CONFIG.maxHealth;
+gameState.kills = 0;
+gameState.deaths = 0;
+gameState.score = 0;
+currentWeapon = { ...weapons[0] };
+gameState.currentWeapon = 0;
+camera.position.set(0, 2, 0);
+playerVelocity.set(0, 0, 0);
+
+if(playerBodyGroup) {
+playerBodyGroup.position.copy(camera.position);
+playerBodyGroup.position.y -= 1.0;
+}
+
+// 重置队友和敌人
+spawnEnemies();
+spawnTeammates();
+
+updateUI();
+}
+
+function togglePause() {
+if (!gameState.isPlaying) return;
+gameState.isPaused = !gameState.isPaused;
+if (gameState.isPaused) {
+document.exitPointerLock();
+document.getElementById('menu').style.display = 'flex';
+document.querySelector('#menu h1').textContent = '⏸️ 游戏暂停';
+document.getElementById('start-btn').textContent = '继续游戏';
+} else {
+document.getElementById('menu').style.display = 'none';
+document.getElementById('canvas-container').requestPointerLock();
+}
+}
+
+function switchWeapon(index) {
+if (index >= weapons.length) return;
+gameState.currentWeapon = index;
+currentWeapon = { ...weapons[index] };
+isReloading = false;
+updateUI();
+updateWeaponModel();
+}
+
+function updateWeaponModel() {
+if (!weaponModel) return;
+const weapon = weapons[gameState.currentWeapon];
+weaponModel.children.forEach(child => {
+if (child.geometry.type === 'BoxGeometry') {
+if (weapon.name === 'AWP') child.scale.set(1, 1, 1.5);
+else child.scale.set(1, 1, 1);
+}
+});
+}
+
+function reload() {
+if (isReloading || currentWeapon.ammo === currentWeapon.totalAmmo) return;
+isReloading = true;
+document.getElementById('ammo-warning').style.display = 'none';
+if (weaponModel) weaponModel.rotation.x = -Math.PI / 4;
+setTimeout(() => {
+currentWeapon.ammo = currentWeapon.totalAmmo;
+isReloading = false;
+if (weaponModel) weaponModel.rotation.x = 0;
+updateUI();
+}, currentWeapon.reloadTime);
+}
+
+function shoot(isTeammate = false, shooterPos = null, shooterDir = null) {
+if (!gameState.isPlaying || gameState.isPaused) return;
+if (!isTeammate) {
+if (isReloading) return;
+const now = Date.now();
+if (now - lastFireTime < currentWeapon.fireRate) return;
+if (currentWeapon.ammo <= 0) {
+document.getElementById('ammo-warning').style.display = 'block';
+return;
+}
+lastFireTime = now;
+currentWeapon.ammo--;
+updateUI();
+
+// 玩家射击特效
+if (weaponModel) {
+weaponModel.position.z += 0.1;
+setTimeout(() => { weaponModel.position.z = -0.5; }, 100);
+}
+createBulletTrail(shooterPos, shooterDir);
+checkHit(shooterPos, shooterDir);
+} else {
+// 队友射击逻辑
+createBulletTrail(shooterPos, shooterDir);
+checkHit(shooterPos, shooterDir, true);
+}
+}
+
+function createBulletTrail(startPos, directionVec) {
+const material = new THREE.LineBasicMaterial({ color: 0xffff00 });
+const points = [];
+const start = startPos ? startPos.clone() : new THREE.Vector3();
+const dir = directionVec ? directionVec.clone() : new THREE.Vector3();
+
+if (!startPos) {
+// 玩家射击
+const gunWorldPos = new THREE.Vector3();
+weaponModel.getWorldPosition(gunWorldPos);
+start.copy(gunWorldPos);
+camera.getWorldDirection(dir);
+} 
+
+points.push(start.clone());
+const endPoint = start.clone().add(dir.normalize().multiplyScalar(100));
+points.push(endPoint);
+
+const geometry = new THREE.BufferGeometry().setFromPoints(points);
+const line = new THREE.Line(geometry, material);
+scene.add(line);
+setTimeout(() => { scene.remove(line); geometry.dispose(); material.dispose(); }, 50);
+}
+
+function checkHit(startPos, directionVec, isTeammateShot = false) {
+const ray = new THREE.Raycaster();
+const origin = startPos ? startPos.clone() : camera.position;
+const dir = directionVec ? directionVec.clone() : new THREE.Vector3();
+
+if (!startPos) {
+// 玩家射线
+ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+} else {
+// NPC 射线
+ray.set(origin, dir);
+}
+
+// 确定目标列表
+let targets = [];
+if (isTeammateShot) {
+// 队友射击，目标是敌人
+targets = enemies.map(e => e.mesh);
+} else {
+// 玩家射击，目标也是敌人
+targets = enemies.map(e => e.mesh);
+}
+
+const intersects = ray.intersectObjects(targets, true);
+
+if (intersects.length > 0) {
+const hitObject = intersects[0].object;
+const damage = isTeammateShot ? CONFIG.teammateDamage : currentWeapon.damage;
+
+for (let i = enemies.length - 1; i >= 0; i--) {
+if (enemies[i].mesh === hitObject.parent || enemies[i].mesh === hitObject) {
+enemies[i].health -= damage;
+createHitEffect(intersects[0].point);
+if (enemies[i].health <= 0) {
+killEnemy(i);
+// 如果是队友击杀，加分给玩家
+if(isTeammateShot) {
+gameState.score += 50;
+showKillFeed('🤝 队友助攻! +50 分');
+updateUI();
+}
+}
+break;
+}
+}
+}
+}
+
+function createHitEffect(position) {
+const particleCount = 10;
+const geometry = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+positions[i * 3] = position.x + (Math.random() - 0.5) * 0.5;
+positions[i * 3 + 1] = position.y + (Math.random() - 0.5) * 0.5;
+positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.5;
+}
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const material = new THREE.PointsMaterial({ color: 0xff0000, size: 0.2 });
+const particles = new THREE.Points(geometry, material);
+scene.add(particles);
+setTimeout(() => { scene.remove(particles); geometry.dispose(); material.dispose(); }, 500);
+}
+
+function killEnemy(index) {
+const enemy = enemies[index];
+scene.remove(enemy.mesh);
+enemies.splice(index, 1);
+gameState.kills++;
+gameState.score += 100;
+showKillFeed('🎯 击杀敌人! +100 分');
+updateUI();
+if (enemies.length === 0) {
+setTimeout(() => { CONFIG.enemySpawnCount += 2; spawnEnemies(); showKillFeed('🔥 新敌人来袭!'); }, 2000);
+}
+}
+
+function showKillFeed(message) {
+const feed = document.getElementById('kill-feed');
+const msg = document.createElement('div');
+msg.className = 'kill-message';
+msg.textContent = message;
+feed.appendChild(msg);
+setTimeout(() => { msg.remove(); }, 3000);
+}
+
+function takeDamage(amount) {
+gameState.health -= amount;
+const overlay = document.getElementById('damage-overlay');
+overlay.style.opacity = 0.8;
+setTimeout(() => { overlay.style.opacity = 0; }, 300);
+updateUI();
+if (gameState.health <= 0) gameOver();
+}
+
+function gameOver() {
+gameState.isPlaying = false;
+gameState.deaths++;
+document.exitPointerLock();
+document.getElementById('menu').style.display = 'flex';
+document.querySelector('#menu h1').textContent = '💀 游戏结束';
+document.querySelector('#menu p').textContent = `最终得分：${gameState.score} | 击杀：${gameState.kills}`;
+document.getElementById('start-btn').textContent = '重新开始';
+CONFIG.enemySpawnCount = 10;
+}
+
+// ==================== 玩家移动 ====================
+function updatePlayerMovement() {
+if (!gameState.isPlaying || gameState.isPaused) return;
+const direction = new THREE.Vector3();
+const frontVector = new THREE.Vector3(0, 0, Number(keys['KeyS'] || 0) - Number(keys['KeyW'] || 0));
+const sideVector = new THREE.Vector3(Number(keys['KeyA'] || 0) - Number(keys['KeyD'] || 0), 0, 0);
+direction.subVectors(frontVector, sideVector).normalize().multiplyScalar(
+keys['ShiftLeft'] ? CONFIG.playerRunSpeed : CONFIG.playerSpeed
+);
+if (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']) {
+const euler = new THREE.Euler(0, camera.rotation.y, 0, 'YXZ');
+direction.applyEuler(euler);
+camera.position.add(direction);
+}
+if (keys['Space'] && isOnGround) {
+playerVelocity.y = CONFIG.jumpForce;
+isOnGround = false;
+}
+playerVelocity.y -= CONFIG.gravity;
+camera.position.y += playerVelocity.y;
+if (camera.position.y <= 2) {
+camera.position.y = 2;
+playerVelocity.y = 0;
+isOnGround = true;
+}
+camera.position.x = Math.max(-95, Math.min(95, camera.position.x));
+camera.position.z = Math.max(-95, Math.min(95, camera.position.z));
+
+if (playerBodyGroup) {
+playerBodyGroup.position.copy(camera.position);
+playerBodyGroup.position.y -= 1.0;
+playerBodyGroup.rotation.y = camera.rotation.y;
+}
+}
+
+// ==================== 【新增】队友 AI 逻辑 ====================
+function updateTeammates() {
+if (!gameState.isPlaying || gameState.isPaused) return;
+
+teammates.forEach(tm => {
+if (!tm.mesh.parent) return; // 已死亡
+
+const distToPlayer = tm.mesh.position.distanceTo(camera.position);
+const lookAtPos = new THREE.Vector3(camera.position.x, 1, camera.position.z);
+tm.mesh.lookAt(lookAtPos);
+
+// 简单的状态机
+let nearestEnemy = null;
+let minDist = 30; // 索敌范围
+
+// 寻找最近的敌人
+for (let enemy of enemies) {
+const d = tm.mesh.position.distanceTo(enemy.mesh.position);
+if (d < minDist) {
+minDist = d;
+nearestEnemy = enemy;
+}
+}
+
+if (nearestEnemy) {
+// 战斗状态
+tm.state = 'attack';
+tm.mesh.lookAt(nearestEnemy.mesh.position.x, 1, nearestEnemy.mesh.position.z);
+
+// 移动靠近一点，但不要贴太近
+if (minDist > 15) {
+const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, tm.mesh.position).normalize();
+dir.y = 0;
+tm.mesh.position.add(dir.multiplyScalar(CONFIG.teammateSpeed * 0.5));
+}
+
+// 射击
+const now = Date.now();
+if (now - tm.lastShot > 800) { // 射速稍慢
+tm.lastShot = now;
+const shootDir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, tm.mesh.position).normalize();
+// 稍微抬高一点瞄准头部
+shootDir.y += 0.1;
+shoot(tm.mesh.position, shootDir, true);
+}
+
+} else {
+// 跟随状态
+tm.state = 'follow';
+if (distToPlayer > 8) {
+const dir = new THREE.Vector3().subVectors(camera.position, tm.mesh.position).normalize();
+dir.y = 0;
+tm.mesh.position.add(dir.multiplyScalar(CONFIG.teammateSpeed));
+} else if (distToPlayer < 4) {
+// 太近了，后退一点
+const dir = new THREE.Vector3().subVectors(tm.mesh.position, camera.position).normalize();
+dir.y = 0;
+tm.mesh.position.add(dir.multiplyScalar(CONFIG.teammateSpeed * 0.5));
+}
+}
+});
+}
+
+// ==================== 敌人 AI ====================
+function updateEnemies() {
+if (!gameState.isPlaying || gameState.isPaused) return;
+const now = Date.now();
+enemies.forEach(enemy => {
+// 敌人优先攻击玩家，如果玩家太远则攻击最近队友
+let targetPos = camera.position;
+let targetDist = enemy.mesh.position.distanceTo(camera.position);
+
+// 检查是否有更近的队友
+for (let tm of teammates) {
+const d = enemy.mesh.position.distanceTo(tm.mesh.position);
+if (d < targetDist) {
+targetDist = d;
+targetPos = tm.mesh.position;
+}
+}
+
+enemy.mesh.lookAt(targetPos.x, 1, targetPos.z);
+const direction = new THREE.Vector3();
+direction.subVectors(targetPos, enemy.mesh.position).normalize();
+direction.y = 0;
+
+if (targetDist > 5) {
+enemy.mesh.position.add(direction.multiplyScalar(enemy.speed));
+}
+
+// 攻击逻辑
+if (targetDist < 15 && now - enemy.lastAttack > 1000) {
+enemy.lastAttack = now;
+// 判断攻击的是玩家还是队友
+if (targetPos === camera.position) {
+takeDamage(CONFIG.enemyDamage);
+} else {
+// 攻击队友 (简化处理，直接扣血，不显示具体谁受伤)
+// 实际项目中应给队友添加血量管理
+}
+}
+});
+}
+
+// ==================== 迷你地图 ====================
+function updateMinimap() {
+const canvas = document.getElementById('minimap-canvas');
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+ctx.fillRect(0, 0, 150, 150);
+const scale = 1.5;
+const centerX = 75;
+const centerY = 75;
+
+// 玩家
+ctx.fillStyle = '#0088ff';
+ctx.beginPath();
+ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+ctx.fill();
+
+// 队友 (青色)
+ctx.fillStyle = '#00ffff';
+teammates.forEach(tm => {
+const dx = (tm.mesh.position.x - camera.position.x) * scale;
+const dz = (tm.mesh.position.z - camera.position.z) * scale;
+if (Math.abs(dx) < 70 && Math.abs(dz) < 70) {
+ctx.beginPath();
+ctx.arc(centerX + dx, centerY + dz, 4, 0, Math.PI * 2);
+ctx.fill();
+}
+});
+
+// 敌人 (红色)
+ctx.fillStyle = '#ff0000';
+enemies.forEach(enemy => {
+const dx = (enemy.mesh.position.x - camera.position.x) * scale;
+const dz = (enemy.mesh.position.z - camera.position.z) * scale;
+if (Math.abs(dx) < 70 && Math.abs(dz) < 70) {
+ctx.beginPath();
+ctx.arc(centerX + dx, centerY + dz, 4, 0, Math.PI * 2);
+ctx.fill();
+}
+});
+
+// 方向
+ctx.strokeStyle = '#0088ff';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.moveTo(centerX, centerY);
+const dirX = Math.sin(camera.rotation.y) * 15;
+const dirZ = Math.cos(camera.rotation.y) * 15;
+ctx.lineTo(centerX + dirX, centerY - dirZ);
+ctx.stroke();
+}
+
+// ==================== UI 更新 ====================
+function updateUI() {
+document.getElementById('health').textContent = Math.max(0, gameState.health);
+document.getElementById('teammates-left').textContent = teammates.length;
+document.getElementById('kills').textContent = gameState.kills;
+document.getElementById('deaths').textContent = gameState.deaths;
+document.getElementById('score').textContent = gameState.score;
+document.getElementById('enemies-left').textContent = enemies.length;
+document.getElementById('weapon-name').textContent = weapons[gameState.currentWeapon].name;
+document.getElementById('ammo').textContent = currentWeapon.ammo;
+document.getElementById('total-ammo').textContent = currentWeapon.totalAmmo;
+if (currentWeapon.ammo <= 5 && !isReloading) document.getElementById('ammo-warning').style.display = 'block';
+if (gameState.health <= 30) document.getElementById('health').style.color = '#f00';
+else document.getElementById('health').style.color = '#fff';
+}
+
+// ==================== 游戏循环 ====================
+function animate() {
+requestAnimationFrame(animate);
+if (gameState.isPlaying && !gameState.isPaused) {
+updatePlayerMovement();
+updateTeammates(); // 【新增】更新队友
+updateEnemies();
+updateMinimap();
+if (isMouseDown && currentWeapon.automatic) shoot();
+}
+if (weaponModel && gameState.isPlaying && !gameState.isPaused) {
+weaponModel.position.y = -0.3 + Math.sin(Date.now() * 0.005) * 0.01;
+}
+renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>

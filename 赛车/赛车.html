@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏎️ 赛车游戏 - 道具版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px #00d4ff;
+        }
+
+        .info {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            color: #fff;
+            font-size: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .info-item {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .info-item span {
+            color: #00d4ff;
+            font-weight: bold;
+        }
+
+        #gameCanvas {
+            border: 4px solid #00d4ff;
+            border-radius: 10px;
+            background: #2d2d2d;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        }
+
+        .btn-container {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #00d4ff, #0099cc);
+            border: none;
+            padding: 15px 40px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.6);
+        }
+
+        .controls {
+            color: #fff;
+            margin-top: 20px;
+            text-align: center;
+            opacity: 0.8;
+            max-width: 500px;
+        }
+
+        .controls p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .key-display {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+        }
+
+        .key {
+            width: 45px;
+            height: 45px;
+            border: 2px solid #00d4ff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: bold;
+            font-size: 18px;
+            transition: all 0.1s;
+        }
+
+        .key.active {
+            background: #00d4ff;
+            color: #000;
+            transform: scale(1.1);
+        }
+
+        #message {
+            color: #00d4ff;
+            font-size: 18px;
+            margin-top: 15px;
+            height: 30px;
+            text-align: center;
+        }
+
+        /* 道具状态显示 */
+        .powerup-status {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .powerup-bar {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.6);
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 2px solid;
+        }
+
+        .powerup-bar.shield {
+            display: flex;
+            border-color: #00d4ff;
+        }
+
+        .powerup-bar.boost {
+            display: flex;
+            border-color: #fbbf24;
+        }
+
+        .powerup-icon {
+            font-size: 20px;
+        }
+
+        .powerup-text {
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .powerup-timer {
+            width: 80px;
+            height: 8px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .powerup-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.1s linear;
+        }
+
+        .shield-fill {
+            background: linear-gradient(90deg, #00d4ff, #0099cc);
+        }
+
+        .boost-fill {
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+        }
+
+        /* 道具图例 */
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .legend-item {
+            text-align: center;
+        }
+
+        .legend-emoji {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 500px) {
+            .legend-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            #gameCanvas {
+                width: 320px;
+                height: 480px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🏎️ 极速赛车 - 道具版</h1>
+    
+    <div class="info">
+        <div class="info-item">🏆 得分：<span id="score">0</span></div>
+        <div class="info-item">⭐ 等级：<span id="level">1</span></div>
+        <div class="info-item">💰 金币：<span id="coins">0</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+    <!-- 道具状态条 -->
+    <div class="powerup-status">
+        <div class="powerup-bar shield" id="shieldBar">
+            <span class="powerup-icon">🛡️</span>
+            <span class="powerup-text">护盾</span>
+            <div class="powerup-timer">
+                <div class="powerup-fill shield-fill" id="shieldFill" style="width: 100%"></div>
+            </div>
+        </div>
+        <div class="powerup-bar boost" id="boostBar">
+            <span class="powerup-icon">⚡</span>
+            <span class="powerup-text">加速</span>
+            <div class="powerup-timer">
+                <div class="powerup-fill boost-fill" id="boostFill" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="key-display">
+        <div class="key" id="keyLeft">←</div>
+        <div class="key" id="keyUp">↑</div>
+        <div class="key" id="keyDown">↓</div>
+        <div class="key" id="keyRight">→</div>
+    </div>
+
+    <div class="btn-container">
+        <button class="btn" id="startBtn">▶️ 开始游戏</button>
+        <button class="btn" id="resetBtn" style="display:none;">🔄 重新开始</button>
+    </div>
+
+    <div id="message">点击"开始游戏"按钮开始</div>
+
+    <div class="controls">
+        <p>← → 或 A D 键左右移动</p>
+        <p>↑ ↓ 或 W S 键上下移动</p>
+    </div>
+
+    <!-- 道具图例 -->
+    <div class="legend">
+        <strong>📦 道具体系：</strong>
+        <div class="legend-grid">
+            <div class="legend-item">
+                <span class="legend-emoji">🛡️</span>
+                <div>护盾</div>
+                <div style="font-size: 11px; opacity: 0.7;">5秒无敌</div>
+            </div>
+            <div class="legend-item">
+                <span class="legend-emoji">⚡</span>
+                <div>加速</div>
+                <div style="font-size: 11px; opacity: 0.7;">3秒提速</div>
+            </div>
+            <div class="legend-item">
+                <span class="legend-emoji">💰</span>
+                <div>金币</div>
+                <div style="font-size: 11px; opacity: 0.7;">+10金币</div>
+            </div>
+            <div class="legend-item">
+                <span class="legend-emoji">💣</span>
+                <div>炸弹</div>
+                <div style="font-size: 11px; opacity: 0.7;">清除障碍</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 获取元素
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const scoreEl = document.getElementById('score');
+        const levelEl = document.getElementById('level');
+        const coinsEl = document.getElementById('coins');
+        const messageEl = document.getElementById('message');
+        const shieldBar = document.getElementById('shieldBar');
+        const boostBar = document.getElementById('boostBar');
+        const shieldFill = document.getElementById('shieldFill');
+        const boostFill = document.getElementById('boostFill');
+
+        // 按键状态
+        const keys = { left: false, right: false, up: false, down: false };
+
+        // 游戏变量
+        let gameRunning = false;
+        let score = 0;
+        let level = 1;
+        let coins = 0;
+        let speed = 3;
+        let player = {};
+        let obstacles = [];
+        let roadMarks = [];
+        let powerups = []; // 道具数组
+        let particles = []; // 粒子效果
+        let animId = null;
+
+        // 道具效果状态
+        let shieldActive = false;
+        let shieldTime = 0;
+        let shieldMaxTime = 5000;
+        let boostActive = false;
+        let boostTime = 0;
+        let boostMaxTime = 3000;
+
+        // 道具类型配置
+        const powerupTypes = [
+            { type: 'shield', emoji: '🛡️', color: '#00d4ff', chance: 0.15 },
+            { type: 'boost', emoji: '⚡', color: '#fbbf24', chance: 0.15 },
+            { type: 'coin', emoji: '💰', color: '#22c55e', chance: 0.25 },
+            { type: 'bomb', emoji: '💣', color: '#ef4444', chance: 0.1 }
+        ];
+
+        // 初始化玩家
+        function initPlayer() {
+            player = {
+                x: canvas.width / 2 - 25,
+                y: canvas.height - 100,
+                width: 50,
+                height: 80,
+                speed: 7,
+                baseSpeed: 7
+            };
+        }
+
+        // 初始化游戏
+        function initGame() {
+            obstacles = [];
+            roadMarks = [];
+            powerups = [];
+            particles = [];
+            score = 0;
+            level = 1;
+            coins = 0;
+            speed = 3;
+            
+            // 重置道具状态
+            shieldActive = false;
+            boostActive = false;
+            updatePowerupUI();
+            
+            initPlayer();
+            updateUI();
+        }
+
+        // 更新UI
+        function updateUI() {
+            scoreEl.textContent = score;
+            levelEl.textContent = level;
+            coinsEl.textContent = coins;
+        }
+
+        // 更新按键显示
+        function updateKeyDisplay() {
+            document.getElementById('keyLeft').classList.toggle('active', keys.left);
+            document.getElementById('keyRight').classList.toggle('active', keys.right);
+            document.getElementById('keyUp').classList.toggle('active', keys.up);
+            document.getElementById('keyDown').classList.toggle('active', keys.down);
+        }
+
+        // 更新道具UI
+        function updatePowerupUI() {
+            if (shieldActive) {
+                shieldBar.style.display = 'flex';
+                const percent = ((shieldTime - Date.now()) / shieldMaxTime) * 100;
+                shieldFill.style.width = Math.max(0, percent) + '%';
+            } else {
+                shieldBar.style.display = 'none';
+            }
+
+            if (boostActive) {
+                boostBar.style.display = 'flex';
+                const percent = ((boostTime - Date.now()) / boostMaxTime) * 100;
+                boostFill.style.width = Math.max(0, percent) + '%';
+            } else {
+                boostBar.style.display = 'none';
+            }
+        }
+
+        // 生成道具
+        function spawnPowerup() {
+            const rand = Math.random();
+            let cumulativeChance = 0;
+            let selectedType = null;
+
+            for (const pType of powerupTypes) {
+                cumulativeChance += pType.chance;
+                if (rand < cumulativeChance) {
+                    selectedType = pType;
+                    break;
+                }
+            }
+
+            if (!selectedType) return;
+
+            powerups.push({
+                x: Math.random() * (canvas.width - 40) + 10,
+                y: -40,
+                size: 35,
+                type: selectedType.type,
+                emoji: selectedType.emoji,
+                color: selectedType.color
+            });
+        }
+
+        // 创建粒子效果
+        function createParticles(x, y, color, count = 15) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    size: Math.random() * 4 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        // 激活道具效果
+        function activatePowerup(type) {
+            const now = Date.now();
+            
+            switch(type) {
+                case 'shield':
+                    shieldActive = true;
+                    shieldTime = now + shieldMaxTime;
+                    messageEl.textContent = '🛡️ 护盾激活！5秒无敌！';
+                    break;
+                case 'boost':
+                    boostActive = true;
+                    boostTime = now + boostMaxTime;
+                    player.speed = player.baseSpeed * 1.5;
+                    messageEl.textContent = '⚡ 加速激活！速度提升！';
+                    break;
+                case 'coin':
+                    coins += 10;
+                    score += 20;
+                    messageEl.textContent = '💰 获得10金币！';
+                    updateUI();
+                    break;
+                case 'bomb':
+                    // 清除所有障碍物
+                    obstacles.forEach(obs => {
+                        createParticles(obs.x + obs.width/2, obs.y + obs.height/2, '#ef4444', 10);
+                    });
+                    obstacles = [];
+                    score += 50;
+                    messageEl.textContent = '💣 炸弹清屏！+50分！';
+                    updateUI();
+                    break;
+            }
+            updateUI();
+        }
+
+        // 绘制道路
+        function drawRoad() {
+            ctx.fillStyle = '#2d2d2d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, 8, canvas.height);
+            ctx.fillRect(canvas.width - 8, 0, 8, canvas.height);
+
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(8, 0, 4, canvas.height);
+            ctx.fillRect(canvas.width - 12, 0, 4, canvas.height);
+
+            if (roadMarks && Array.isArray(roadMarks)) {
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                roadMarks.forEach(m => {
+                    if (m && typeof m.y !== 'undefined') { // 已修复：检查对象是否存在及y属性
+                        ctx.fillRect(canvas.width/2 - 4, m.y, 8, 30);
+                    }
+                });
+            }
+        }
+
+        // 绘制赛车
+        function drawCar(x, y, w, h, color, hasShield = false, isBoosting = false) {
+            // 车身
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+
+            // 车窗
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(x + 7, y + 15, w - 14, 20);
+
+            // 车轮
+            ctx.fillStyle = '#333';
+            ctx.fillRect(x - 5, y + 10, 5, 15);
+            ctx.fillRect(x + w, y + 10, 5, 15);
+            ctx.fillRect(x - 5, y + h - 25, 5, 15);
+            ctx.fillRect(x + w, y + h - 25, 5, 15);
+
+            // 车灯
+            ctx.fillStyle = '#fef3c7';
+            ctx.fillRect(x + 8, y, 10, 5);
+            ctx.fillRect(x + w - 18, y, 10, 5);
+
+            // 护盾效果
+            if (hasShield) {
+                ctx.strokeStyle = '#00d4ff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(x + w/2, y + h/2, w/1.3, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(0, 212, 255, 0.15)';
+                ctx.fill();
+            }
+
+            // 加速火焰
+            if (isBoosting) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.moveTo(x + 15, y + h);
+                ctx.lineTo(x + w/2, y + h + 25);
+                ctx.lineTo(x + w - 15, y + h);
+                ctx.fill();
+            }
+        }
+
+        // 绘制道具
+        function drawPowerups() {
+            if (!powerups || !Array.isArray(powerups)) return;
+            
+            powerups.forEach(p => {
+                if (!p || typeof p.y === 'undefined') return; // 已修复：检查对象存在性
+                
+                // 光晕效果
+                const gradient = ctx.createRadialGradient(
+                    p.x + p.size/2, p.y + p.size/2, 0,
+                    p.x + p.size/2, p.y + p.size/2, p.size
+                );
+                gradient.addColorStop(0, p.color);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 道具本体
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Emoji图标
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(p.emoji, p.x + p.size/2, p.y + p.size/2);
+            });
+        }
+
+        // 绘制障碍物
+        function drawObstacles() {
+            const colors = ['#ef4444', '#f97316', '#fbbf24', '#22c55e', '#3b82f6'];
+            if (obstacles && Array.isArray(obstacles)) {
+                obstacles.forEach(o => {
+                    if (!o || typeof o.y === 'undefined') return; // 已修复：检查对象存在性
+                    
+                    ctx.fillStyle = o.color || colors[Math.floor(Math.random() * colors.length)];
+                    ctx.fillRect(o.x, o.y, o.width, o.height);
+                    // 装饰
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillRect(o.x + 5, o.y + 5, o.width - 10, o.height - 10);
+                });
+            }
+        }
+
+        // 绘制粒子
+        function drawParticles() {
+            if (!particles || !Array.isArray(particles)) return;
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                if (!p || typeof p.y === 'undefined') continue; // 已修复：检查对象存在性
+                
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // 碰撞检测
+        function checkCollision(a, b) {
+            if (!a || !b) return false; // 已修复：检查对象存在性
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
+        // 游戏更新
+        function update() {
+            const now = Date.now();
+
+            // 检查道具效果是否过期
+            if (shieldActive && now > shieldTime) {
+                shieldActive = false;
+                messageEl.textContent = '护盾已消失';
+            }
+            if (boostActive && now > boostTime) {
+                boostActive = false;
+                player.speed = player.baseSpeed;
+                messageEl.textContent = '加速已结束';
+            }
+            updatePowerupUI();
+
+            // 玩家移动
+            if (keys.left && player.x > 10) player.x -= player.speed;
+            if (keys.right && player.x < canvas.width - player.width - 10) player.x += player.speed;
+            if (keys.up && player.y > 50) player.y -= player.speed * 0.7;
+            if (keys.down && player.y < canvas.height - player.height - 10) player.y += player.speed * 0.7;
+
+            // 生成障碍物
+            if (Math.random() < 0.03 + level * 0.005) {
+                obstacles.push({
+                    x: Math.random() * (canvas.width - 60) + 10,
+                    y: -60,
+                    width: 50,
+                    height: 50
+                });
+            }
+
+            // 生成道具 (每2-4秒生成一个)
+            if (Math.random() < 0.015) {
+                spawnPowerup();
+            }
+
+            // 移动障碍物
+            if (obstacles && Array.isArray(obstacles)) {
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    if (!obstacles[i]) continue; // 已修复：检查对象存在性
+                    obstacles[i].y += speed;
+
+                    if (checkCollision(player, obstacles[i])) {
+                        if (shieldActive) {
+                            // 有护盾，消除障碍
+                            createParticles(obstacles[i].x + 25, obstacles[i].y + 25, '#00d4ff', 20);
+                            obstacles.splice(i, 1);
+                            score += 10;
+                            updateUI();
+                        } else {
+                            gameOver();
+                            return;
+                        }
+                    }
+
+                    if (obstacles[i].y > canvas.height) {
+                        obstacles.splice(i, 1);
+                        score += 10;
+                        if (score % 100 === 0) {
+                            level++;
+                            speed += 0.5;
+                        }
+                        updateUI();
+                    }
+                }
+            }
+
+            // 移动道具
+            if (powerups && Array.isArray(powerups)) {
+                for (let i = powerups.length - 1; i >= 0; i--) {
+                    if (!powerups[i]) continue; // 已修复：检查对象存在性
+                    powerups[i].y += speed;
+
+                    // 检测玩家与道具碰撞
+                    if (checkCollision(player, {
+                        x: powerups[i].x,
+                        y: powerups[i].y,
+                        width: powerups[i].size,
+                        height: powerups[i].size
+                    })) {
+                        createParticles(powerups[i].x + powerups[i].size/2, 
+                                      powerups[i].y + powerups[i].size/2, 
+                                      powerups[i].color, 20);
+                        activatePowerup(powerups[i].type);
+                        powerups.splice(i, 1);
+                    }
+
+                    if (powerups[i].y > canvas.height) {
+                        powerups.splice(i, 1);
+                    }
+                }
+            }
+
+            // 道路标记
+            if (Math.random() < 0.1) {
+                roadMarks.push({ y: -40 });
+            }
+            
+            if (roadMarks && Array.isArray(roadMarks)) {
+                for (let i = roadMarks.length - 1; i >= 0; i--) {
+                    if (!roadMarks[i]) continue; // 已修复：检查对象存在性
+                    roadMarks[i].y += speed;
+                    if (roadMarks[i].y > canvas.height) roadMarks.splice(i, 1);
+                }
+            }
+        }
+
+        // 游戏绘制
+        function draw() {
+            drawRoad();
+            drawObstacles();
+            drawPowerups();
+            drawCar(player.x, player.y, player.width, player.height, '#00d4ff', shieldActive, boostActive);
+            drawParticles();
+        }
+
+        // 游戏循环
+        function gameLoop() {
+            if (!gameRunning) return;
+            update();
+            draw();
+            animId = requestAnimationFrame(gameLoop);
+        }
+
+        // 开始游戏
+        function startGame() {
+            if (gameRunning) return;
+            initGame();
+            gameRunning = true;
+            startBtn.style.display = 'none';
+            resetBtn.style.display = 'inline-block';
+            messageEl.textContent = '游戏开始！收集道具！';
+            gameLoop();
+        }
+
+        // 游戏结束
+        function gameOver() {
+            gameRunning = false;
+            if (animId) cancelAnimationFrame(animId);
+            resetBtn.style.display = 'inline-block';
+            messageEl.textContent = '💥 游戏结束！得分：' + score + ' | 金币：' + coins;
+            shieldBar.style.display = 'none';
+            boostBar.style.display = 'none';
+        }
+
+        // 键盘事件
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; }
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { keys.up = true; }
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { keys.down = true; }
+            updateKeyDisplay();
+        });
+
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = false; }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = false; }
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { keys.up = false; }
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { keys.down = false; }
+            updateKeyDisplay();
+        });
+
+        // 按钮事件
+        startBtn.addEventListener('click', startGame);
+        resetBtn.addEventListener('click', function() {
+            resetBtn.textContent = '🔄 重新开始';
+            startGame();
+        });
+
+        // 初始绘制
+        initPlayer();
+        draw();
+
+        console.log('已修复 y 属性错误，道具版赛车游戏已加载！');
+    </script>
+</body>
+</html>
