@@ -331,9 +331,24 @@
         ];
 
         let gameState = 'MENU'; // MENU, HANGAR, PLAYING, GAMEOVER
-        let credits = parseInt(localStorage.getItem('spaceFighterCredits')) || 0;
-        let ownedSkins = JSON.parse(localStorage.getItem('spaceFighterSkins')) || ['classic'];
-        let equippedSkinId = localStorage.getItem('spaceFighterEquipped') || 'classic';
+        // load persistent data with safety checks
+        let credits = 0;
+        try {
+            const c = parseInt(localStorage.getItem('spaceFighterCredits'));
+            if (!isNaN(c)) credits = c;
+        } catch (e) { /* ignore corrupt value */ }
+
+        let ownedSkins = ['classic'];
+        try {
+            const stored = JSON.parse(localStorage.getItem('spaceFighterSkins'));
+            if (Array.isArray(stored) && stored.length) ownedSkins = stored;
+        } catch (e) { /* malformed JSON, fall back on default */ }
+
+        let equippedSkinId = 'classic';
+        try {
+            const eq = localStorage.getItem('spaceFighterEquipped');
+            if (eq) equippedSkinId = eq;
+        } catch (e) { /* ignore */ }
 
         // 游戏变量
         let scene, camera, renderer;
@@ -551,28 +566,30 @@
 
         function updatePlayerSkinVisuals(targetGroup = player) {
             const skin = getSkinById(equippedSkinId);
-            if (!skin) return;
+            if (!skin || !targetGroup) return;
 
-            // 更新机身颜色 (第0个子物体)
-            if(targetGroup.children[0]) targetGroup.children[0].material.color.setHex(skin.color);
-            // 更新机翼颜色 (第1, 2, 3个子物体)
-            for(let i=1; i<=3; i++) {
-                if(targetGroup.children[i]) targetGroup.children[i].material.color.setHex(skin.wingColor);
-            }
-            // 更新引擎火焰 (第4, 5个子物体是组，里面包含flame和ring)
-            for(let i=4; i<=5; i++) {
-                if(targetGroup.children[i]) {
-                    const flame = targetGroup.children[i].getObjectByName('flame');
-                    const ring = targetGroup.children[i].getObjectByName('ring');
-                    if(flame) flame.material.color.setHex(skin.flame);
-                    if(ring) ring.material.color.setHex(skin.flame);
+            // 尽量通过名称而非索引找到部件，防止后续模型调整时出错
+            const fuselage = targetGroup.children.find(c => c.geometry && c.geometry.type === 'ConeGeometry');
+            if (fuselage && fuselage.material) fuselage.material.color.setHex(skin.color);
+
+            const wings = targetGroup.children.filter(c => c.geometry && c.geometry.type === 'BoxGeometry');
+            wings.forEach(w => { if (w.material) w.material.color.setHex(skin.wingColor); });
+
+            // 引擎组中寻找 flame / ring 并更新颜色
+            targetGroup.children.forEach(c => {
+                if (c.isGroup) {
+                    const flame = c.getObjectByName('flame');
+                    const ring = c.getObjectByName('ring');
+                    if (flame) flame.material.color.setHex(skin.flame);
+                    if (ring) ring.material.color.setHex(skin.flame);
                 }
-            }
-            
-            // 更新UI显示
-            if(gameState === 'PLAYING') {
-                document.getElementById('active-skin-name').innerText = skin.name;
-                document.getElementById('active-skin-name').style.color = '#' + skin.color.toString(16).padStart(6,'0');
+            });
+
+            // 更新UI显示，不论当前在哪个界面都保持最新
+            const label = document.getElementById('active-skin-name');
+            if (label) {
+                label.innerText = skin.name;
+                label.style.color = '#' + skin.color.toString(16).padStart(6, '0');
             }
         }
 
