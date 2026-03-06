@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D火柴人枪战 - 终极完整版</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; background: #f0f0f0; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        /* UI 层 */
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px;
+            color: white; text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .stat-box {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px; border-radius: 8px;
+            margin-bottom: 10px; font-size: 18px; font-weight: bold;
+            border-left: 5px solid #fff;
+            backdrop-filter: blur(4px);
+            transition: transform 0.2s;
+        }
+        #hp-box { border-color: #ff4757; }
+        #score-box { border-color: #ffa502; }
+        #team-box { border-color: #2ed573; }
+
+        /* 准星 */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 24px; height: 24px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 2px rgba(0,0,0,0.5);
+        }
+        #crosshair::before { top: 11px; left: 0; width: 24px; height: 2px; }
+        #crosshair::after { top: 0; left: 11px; width: 2px; height: 24px; }
+        #crosshair-dot {
+            position: absolute; top: 50%; left: 50%;
+            width: 4px; height: 4px;
+            background: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* 游戏结束菜单 */
+        #game-over {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; z-index: 20;
+        }
+        h1 { font-size: 48px; margin: 0 0 20px 0; color: #ff4757; text-transform: uppercase; letter-spacing: 2px; }
+        p { font-size: 24px; margin: 10px 0; }
+        button {
+            margin-top: 30px; padding: 15px 40px; font-size: 20px;
+            background: #2ed573; color: white; border: none;
+            border-radius: 50px; cursor: pointer;
+            transition: all 0.2s; font-weight: bold;
+            box-shadow: 0 4px 15px rgba(46, 213, 115, 0.4);
+        }
+        button:hover { transform: scale(1.05); background: #26af61; box-shadow: 0 6px 20px rgba(46, 213, 115, 0.6); }
+        
+        #controls-hint {
+            position: absolute; bottom: 20px; width: 100%;
+            text-align: center; color: rgba(255,255,255,0.8);
+            font-size: 14px; pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+        
+        #shoot-feedback {
+            position: absolute; top: 45%; left: 50%;
+            transform: translateX(-50%);
+            color: yellow; font-weight: bold;
+            font-size: 18px; opacity: 0; transition: opacity 0.1s;
+            pointer-events: none; z-index: 15;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+    <!-- 引入 Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="stat-box" id="score-box">得分: <span id="score">0</span></div>
+        <div class="stat-box" id="hp-box">生命: <span id="health">100</span>%</div>
+        <div class="stat-box" id="team-box">队友: <span id="team-count">3</span></div>
+    </div>
+
+    <div id="crosshair"><div id="crosshair-dot"></div></div>
+    <div id="shoot-feedback">FIRED!</div>
+    
+    <div id="controls-hint">
+        WASD 全向移动 | 鼠标瞄准转身 | 左键射击 | 保护绿色队友
+    </div>
+
+    <div id="game-over">
+        <h1>游戏结束</h1>
+        <p>最终得分: <span id="final-score">0</span></p>
+        <p id="death-reason" style="font-size: 16px; color: #ccc;"></p>
+        <button onclick="location.reload()">重新开始</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 全局变量 ---
+        let scene, camera, renderer;
+        let player = null;
+        let allies = [], enemies = [], bullets = [], particles = [];
+        let score = 0;
+        let gameRunning = true;
+        let frameCount = 0;
+        
+        const keys = { w: false, a: false, s: false, d: false };
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); 
+
+        // 配置参数
+        const CONFIG = {
+            playerSpeed: 0.15,
+            allySpeed: 0.12,
+            enemySpeed: 0.08,
+            bulletSpeed: 0.8,
+            fireRate: 12, 
+            cameraDistance: 7,
+            cameraHeight: 4,
+            colors: {
+                player: 0x2e86de,
+                ally: 0x2ed573,
+                enemy: 0xff4757,
+                ground: 0x7bed9f,
+                sky: 0xe0f7fa
+            }
+        };
+
+        // --- 初始化 ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 场景设置
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.colors.sky);
+            scene.fog = new THREE.Fog(CONFIG.colors.sky, 20, 60);
+
+            // 相机
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // 灯光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.top = 30;
+            dirLight.shadow.camera.bottom = -30;
+            dirLight.shadow.camera.left = -30;
+            dirLight.shadow.camera.right = 30;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // 地面
+            const groundGeo = new THREE.PlaneGeometry(200, 200);
+            const groundMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.ground });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // 网格辅助
+            const gridHelper = new THREE.GridHelper(200, 50, 0xffffff, 0xffffff);
+            gridHelper.material.opacity = 0.1;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
+            // 创建玩家
+            player = createStickman(CONFIG.colors.player, 'player');
+            scene.add(player.mesh);
+
+            // 定义玩家射击方法 (确保作用域正确)
+            player.shootAction = function() {
+                if (!gameRunning) return;
+                const now = frameCount;
+                if (now - this.lastShot < CONFIG.fireRate) return;
+
+                this.lastShot = now;
+
+                // 获取枪口世界坐标
+                const gunWorldPos = new THREE.Vector3();
+                this.limbs.gun.getWorldPosition(gunWorldPos);
+                
+                // 计算射击方向 (基于身体朝向)
+                const shootDir = new THREE.Vector3(0, 0, 1);
+                shootDir.applyQuaternion(this.mesh.quaternion);
+                shootDir.y += 0.05; // 稍微向上
+                shootDir.normalize();
+
+                // 构造子弹旋转
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), shootDir);
+
+                createBullet(gunWorldPos, quaternion, false);
+
+                // 后坐力动画
+                this.limbs.armGroup.position.z += 0.2;
+                setTimeout(() => {
+                    if(this.limbs) this.limbs.armGroup.position.z -= 0.2;
+                }, 100);
+
+                // 视觉反馈
+                const msg = document.getElementById('shoot-feedback');
+                msg.style.opacity = 1;
+                msg.style.top = '40%';
+                setTimeout(() => {
+                    msg.style.opacity = 0;
+                    msg.style.top = '45%';
+                }, 100);
+            };
+
+            // 创建队友
+            spawnAlly(-2, 0);
+            spawnAlly(2, 0);
+            spawnAlly(0, -2);
+
+            // 事件监听
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', (e) => handleKey(e, true));
+            document.addEventListener('keyup', (e) => handleKey(e, false));
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mousedown', (e) => { 
+                if(gameRunning && e.button === 0 && player && player.shootAction) { 
+                    player.shootAction(); 
+                }
+            });
+
+            animate();
+        }
+
+        // --- 火柴人生成工厂 ---
+        function createStickman(color, type) {
+            const group = new THREE.Group();
+            const material = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 });
+            
+            function createLimb(w, h, d, x, y, z) {
+                const geo = new THREE.BoxGeometry(w, h, d);
+                const mesh = new THREE.Mesh(geo, material);
+                mesh.position.set(x, y, z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                return mesh;
+            }
+
+            // 身体部件
+            const head = createLimb(0.4, 0.4, 0.4, 0, 1.6, 0);
+            group.add(head);
+            const body = createLimb(0.3, 0.7, 0.2, 0, 1.0, 0);
+            group.add(body);
+
+            // 手臂组 (用于瞄准旋转)
+            const armGroup = new THREE.Group();
+            armGroup.position.set(0, 1.3, 0);
+            const armL = createLimb(0.12, 0.6, 0.12, -0.25, -0.2, 0);
+            const armR = createLimb(0.12, 0.6, 0.12, 0.25, -0.2, 0);
+            armGroup.add(armL, armR);
+            group.add(armGroup);
+
+            // 腿
+            const legL = createLimb(0.12, 0.7, 0.12, -0.15, 0.35, 0);
+            const legR = createLimb(0.12, 0.7, 0.12, 0.15, 0.35, 0);
+            // 调整腿的旋转中心到顶部
+            legL.geometry.translate(0, -0.35, 0); legL.position.y += 0.35;
+            legR.geometry.translate(0, -0.35, 0); legR.position.y += 0.35;
+            group.add(legL, legR);
+
+            // 枪
+            const gunGeo = new THREE.BoxGeometry(0.1, 0.1, 0.5);
+            const gunMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const gun = new THREE.Mesh(gunGeo, gunMat);
+            gun.position.set(0.25, 0, 0.3);
+            gun.castShadow = true;
+            armGroup.add(gun);
+
+            group.userData = {
+                type: type,
+                health: type === 'player' ? 100 : (type === 'ally' ? 30 : 3),
+                speed: type === 'player' ? CONFIG.playerSpeed : (type === 'ally' ? CONFIG.allySpeed : CONFIG.enemySpeed),
+                lastShot: 0,
+                walkCycle: 0,
+                limbs: { legL, legR, armGroup, gun }
+            };
+
+            return { mesh: group, ...group.userData };
+        }
+
+        function spawnAlly(x, z) {
+            const ally = createStickman(CONFIG.colors.ally, 'ally');
+            ally.mesh.position.set(x, 0, z);
+            scene.add(ally.mesh);
+            allies.push(ally);
+        }
+
+        function spawnEnemy() {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 20 + Math.random() * 10;
+            const x = player.mesh.position.x + Math.cos(angle) * radius;
+            const z = player.mesh.position.z + Math.sin(angle) * radius;
+            const enemy = createStickman(CONFIG.colors.enemy, 'enemy');
+            enemy.mesh.position.set(x, 0, z);
+            scene.add(enemy.mesh);
+            enemies.push(enemy);
+        }
+
+        function createBullet(position, quaternion, isEnemy) {
+            const geo = new THREE.SphereGeometry(0.15, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: isEnemy ? 0xff0000 : 0x333333 });
+            const bullet = new THREE.Mesh(geo, mat);
+            bullet.position.copy(position);
+            bullet.quaternion.copy(quaternion);
+            
+            const velocity = new THREE.Vector3(0, 0, 1);
+            velocity.applyQuaternion(quaternion);
+            velocity.multiplyScalar(CONFIG.bulletSpeed);
+
+            scene.add(bullet);
+            bullets.push({ mesh: bullet, velocity: velocity, isEnemy: isEnemy, life: 100 });
+        }
+
+        function createExplosion(position, color) {
+            const particleCount = 10;
+            const geo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+            const mat = new THREE.MeshBasicMaterial({ color: color });
+            for(let i=0; i<particleCount; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+                mesh.position.x += (Math.random() - 0.5) * 0.5;
+                mesh.position.y += Math.random() * 0.5;
+                mesh.position.z += (Math.random() - 0.5) * 0.5;
+                const vel = new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.3, (Math.random()-0.5)*0.3);
+                scene.add(mesh);
+                particles.push({ mesh, velocity: vel, life: 40 });
+            }
+        }
+
+        // --- 输入处理 ---
+        function handleKey(e, isDown) {
+            const key = e.key.toLowerCase();
+            if(keys.hasOwnProperty(key)) keys[key] = isDown;
+        }
+
+        function onMouseMove(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        // --- 核心更新逻辑 ---
+        function updatePlayer() {
+            if(!player) return;
+
+            // 1. 瞄准：玩家看向鼠标在地面的投影
+            raycaster.setFromCamera(mouse, camera);
+            const intersectionPoint = new THREE.Vector3();
+            if(raycaster.ray.intersectPlane(groundPlane, intersectionPoint)) {
+                const lookTarget = intersectionPoint.clone();
+                lookTarget.y = player.mesh.position.y;
+                player.mesh.lookAt(lookTarget);
+            }
+
+            // 2. 移动：基于玩家当前朝向计算前后左右
+            const moveDir = new THREE.Vector3(0, 0, 0);
+            const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(player.mesh.quaternion);
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(player.mesh.quaternion);
+            
+            if(keys.w) moveDir.add(forward);
+            if(keys.s) moveDir.sub(forward);
+            if(keys.a) moveDir.sub(right);
+            if(keys.d) moveDir.add(right);
+
+            if(moveDir.length() > 0) {
+                moveDir.normalize().multiplyScalar(player.speed);
+                player.mesh.position.add(moveDir);
+                
+                // 行走动画
+                player.walkCycle += 0.2;
+                player.limbs.legL.rotation.x = Math.sin(player.walkCycle) * 0.6;
+                player.limbs.legR.rotation.x = Math.sin(player.walkCycle + Math.PI) * 0.6;
+            } else {
+                player.limbs.legL.rotation.x = 0;
+                player.limbs.legR.rotation.x = 0;
+            }
+
+            // 3. 相机：动态跟随到玩家背后
+            const cameraOffset = new THREE.Vector3(0, CONFIG.cameraHeight, -CONFIG.cameraDistance);
+            cameraOffset.applyQuaternion(player.mesh.quaternion);
+            const targetCamPos = player.mesh.position.clone().add(cameraOffset);
+            
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(player.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+        }
+
+        function updateAllies() {
+            allies.forEach((ally) => {
+                const dist = ally.mesh.position.distanceTo(player.mesh.position);
+                if(dist > 3.5) {
+                    const dir = new THREE.Vector3().subVectors(player.mesh.position, ally.mesh.position).normalize();
+                    ally.mesh.position.add(dir.multiplyScalar(ally.speed));
+                    ally.mesh.lookAt(player.mesh.position);
+                    ally.walkCycle += 0.2;
+                    ally.limbs.legL.rotation.x = Math.sin(ally.walkCycle) * 0.6;
+                    ally.limbs.legR.rotation.x = Math.sin(ally.walkCycle + Math.PI) * 0.6;
+                } else {
+                    ally.limbs.legL.rotation.x = 0;
+                    ally.limbs.legR.rotation.x = 0;
+                }
+
+                // 自动射击
+                let nearest = null;
+                let minDst = 15;
+                enemies.forEach(e => {
+                    const d = ally.mesh.position.distanceTo(e.mesh.position);
+                    if(d < minDst) { minDst = d; nearest = e; }
+                });
+
+                if(nearest && frameCount % 40 === 0) {
+                    ally.mesh.lookAt(nearest.mesh.position);
+                    const gunWorldPos = new THREE.Vector3();
+                    ally.limbs.gun.getWorldPosition(gunWorldPos);
+                    const q = new THREE.Quaternion();
+                    q.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3().subVectors(nearest.mesh.position, ally.mesh.position).normalize());
+                    createBullet(gunWorldPos, q, false);
+                }
+            });
+        }
+
+        function updateEnemies() {
+            enemies.forEach((enemy) => {
+                const dir = new THREE.Vector3().subVectors(player.mesh.position, enemy.mesh.position).normalize();
+                enemy.mesh.position.add(dir.multiplyScalar(enemy.speed));
+                enemy.mesh.lookAt(player.mesh.position);
+                enemy.walkCycle += 0.15;
+                enemy.limbs.legL.rotation.x = Math.sin(enemy.walkCycle) * 0.5;
+                enemy.limbs.legR.rotation.x = Math.sin(enemy.walkCycle + Math.PI) * 0.5;
+
+                if(player.mesh.position.distanceTo(enemy.mesh.position) < 12 && frameCount % 60 === 0) {
+                    const gunWorldPos = new THREE.Vector3();
+                    enemy.limbs.gun.getWorldPosition(gunWorldPos);
+                    const q = new THREE.Quaternion();
+                    q.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3().subVectors(player.mesh.position, enemy.mesh.position).normalize());
+                    createBullet(gunWorldPos, q, true);
+                }
+            });
+        }
+
+        function updateBullets() {
+            for(let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.mesh.position.add(b.velocity);
+                b.life--;
+                let hit = false;
+                const bulletBox = new THREE.Box3().setFromObject(b.mesh);
+
+                if(b.isEnemy) {
+                    if(new THREE.Box3().setFromObject(player.mesh).intersectsBox(bulletBox)) {
+                        player.health -= 10; createExplosion(b.mesh.position, 0xff0000); hit = true;
+                    }
+                    for(let j = allies.length - 1; j >= 0; j--) {
+                        if(new THREE.Box3().setFromObject(allies[j].mesh).intersectsBox(bulletBox)) {
+                            allies[j].health -= 10; createExplosion(b.mesh.position, 0xffffff); hit = true;
+                            if(allies[j].health <= 0) {
+                                createExplosion(allies[j].mesh.position, CONFIG.colors.ally);
+                                scene.remove(allies[j].mesh); allies.splice(j, 1);
+                            }
+                            break;
+                        }
+                    }
+                } else {
+                    for(let j = enemies.length - 1; j >= 0; j--) {
+                        if(new THREE.Box3().setFromObject(enemies[j].mesh).intersectsBox(bulletBox)) {
+                            enemies[j].health--; createExplosion(b.mesh.position, 0xffffff); hit = true;
+                            if(enemies[j].health <= 0) {
+                                createExplosion(enemies[j].mesh.position, CONFIG.colors.enemy);
+                                scene.remove(enemies[j].mesh); enemies.splice(j, 1); score += 10;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if(hit || b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
+            }
+        }
+
+        function updateParticles() {
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.mesh.position.add(p.velocity);
+                p.velocity.y -= 0.01; 
+                if(p.mesh.position.y < 0) p.mesh.position.y = 0;
+                p.life--; p.mesh.scale.multiplyScalar(0.9);
+                if(p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+            }
+        }
+
+        function checkCollisions() {
+            const pBox = new THREE.Box3().setFromObject(player.mesh);
+            enemies.forEach((e) => {
+                const eBox = new THREE.Box3().setFromObject(e.mesh);
+                if(pBox.intersectsBox(eBox)) { player.health -= 1; }
+                allies.forEach((a, idx) => {
+                    if(eBox.intersectsBox(new THREE.Box3().setFromObject(a.mesh))) {
+                        a.health -= 1;
+                        if(a.health <= 0) {
+                            createExplosion(a.mesh.position, CONFIG.colors.ally);
+                            scene.remove(a.mesh); allies.splice(idx, 1);
+                        }
+                    }
+                });
+            });
+        }
+
+        function updateUI() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('health').innerText = Math.max(0, player.health);
+            document.getElementById('team-count').innerText = allies.length;
+            if(player.health <= 0 && gameRunning) {
+                gameRunning = false;
+                document.getElementById('game-over').style.display = 'flex';
+                document.getElementById('final-score').innerText = score;
+                document.getElementById('death-reason').innerText = "你阵亡了！";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!gameRunning) return;
+            frameCount++;
+            updatePlayer();
+            updateAllies();
+            updateEnemies();
+            updateBullets();
+            updateParticles();
+            checkCollisions();
+            updateUI();
+            if(frameCount % 100 === 0) spawnEnemy();
+            if(score > 20 && frameCount % 80 === 0) spawnEnemy();
+            if(score > 50 && frameCount % 50 === 0) spawnEnemy();
+            renderer.render(scene, camera);
+        }
+
+        // 启动游戏
+        init();
+    </script>
+</body>
+</html>

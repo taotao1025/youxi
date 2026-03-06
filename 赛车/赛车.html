@@ -3,823 +3,1005 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏎️ 赛车游戏 - 道具版</title>
+    <title>🏎️ 3D 极速赛车 - 终极修复版</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --primary: #00d4ff;
+            --secondary: #a855f7;
+            --gold: #fbbf24;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --dark-bg: #0f172a;
+            --glass: rgba(15, 23, 42, 0.95);
         }
 
         body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--dark-bg);
+            color: #fff;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .ui-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
+            align-items: center;
+        }
+
+        .menu-panel {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            text-align: center;
+            pointer-events: auto;
+            transform: scale(1);
+            transition: all 0.3s ease;
+            max-width: 90%;
+            width: 550px;
+            position: relative; /* 为了定位重置按钮 */
+        }
+
+        .menu-panel.hidden {
+            display: none;
+            opacity: 0;
+            transform: scale(0.9);
+            pointer-events: none;
         }
 
         h1 {
-            color: #00d4ff;
-            margin-bottom: 15px;
-            text-shadow: 0 0 10px #00d4ff;
+            font-size: 42px;
+            margin: 0 0 10px 0;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
         }
 
-        .info {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 15px;
-            color: #fff;
-            font-size: 16px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
+        h2 { font-size: 28px; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; }
+        p.subtitle { color: #94a3b8; margin-bottom: 25px; }
 
-        .info-item {
-            background: rgba(255,255,255,0.1);
-            padding: 8px 15px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .info-item span {
-            color: #00d4ff;
-            font-weight: bold;
-        }
-
-        #gameCanvas {
-            border: 4px solid #00d4ff;
-            border-radius: 10px;
-            background: #2d2d2d;
-            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-        }
-
-        .btn-container {
-            margin-top: 20px;
-            display: flex;
-            gap: 15px;
-        }
+        .btn-group { display: flex; flex-direction: column; gap: 15px; width: 100%; }
 
         .btn {
-            background: linear-gradient(45deg, #00d4ff, #0099cc);
+            background: linear-gradient(90deg, var(--primary), #0284c7);
             border: none;
-            padding: 15px 40px;
+            padding: 16px 30px;
             color: #fff;
             font-size: 18px;
             font-weight: bold;
-            border-radius: 30px;
+            border-radius: 50px;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4);
-        }
-
-        .btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.6);
-        }
-
-        .controls {
-            color: #fff;
-            margin-top: 20px;
-            text-align: center;
-            opacity: 0.8;
-            max-width: 500px;
-        }
-
-        .controls p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-
-        .key-display {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            justify-content: center;
-        }
-
-        .key {
-            width: 45px;
-            height: 45px;
-            border: 2px solid #00d4ff;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-weight: bold;
-            font-size: 18px;
-            transition: all 0.1s;
-        }
-
-        .key.active {
-            background: #00d4ff;
-            color: #000;
-            transform: scale(1.1);
-        }
-
-        #message {
-            color: #00d4ff;
-            font-size: 18px;
-            margin-top: 15px;
-            height: 30px;
-            text-align: center;
-        }
-
-        /* 道具状态显示 */
-        .powerup-status {
-            display: flex;
-            gap: 15px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .powerup-bar {
-            display: none;
-            align-items: center;
-            gap: 8px;
-            background: rgba(0,0,0,0.6);
-            padding: 8px 15px;
-            border-radius: 20px;
-            border: 2px solid;
-        }
-
-        .powerup-bar.shield {
-            display: flex;
-            border-color: #00d4ff;
-        }
-
-        .powerup-bar.boost {
-            display: flex;
-            border-color: #fbbf24;
-        }
-
-        .powerup-icon {
-            font-size: 20px;
-        }
-
-        .powerup-text {
-            color: #fff;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .powerup-timer {
-            width: 80px;
-            height: 8px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 4px;
+            transition: all 0.2s;
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.3);
+            text-transform: uppercase;
+            position: relative;
             overflow: hidden;
         }
 
-        .powerup-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.1s linear;
+        .btn:hover { transform: translateY(-3px); filter: brightness(1.1); }
+        .btn:active { transform: translateY(1px); }
+        .btn-secondary { background: linear-gradient(90deg, #475569, #334155); }
+        .btn-gold { background: linear-gradient(90deg, var(--gold), #d97706); box-shadow: 0 5px 20px rgba(251, 191, 36, 0.3); }
+        .btn-danger { background: linear-gradient(90deg, #ef4444, #b91c1c); font-size: 14px; padding: 8px 15px; width: auto; display: inline-block; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); transform: none !important; }
+
+        /* 重置按钮容器 */
+        .reset-container {
+            position: absolute;
+            top: 15px;
+            right: 15px;
         }
 
-        .shield-fill {
-            background: linear-gradient(90deg, #00d4ff, #0099cc);
-        }
-
-        .boost-fill {
-            background: linear-gradient(90deg, #fbbf24, #f59e0b);
-        }
-
-        /* 道具图例 */
-        .legend {
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            color: #fff;
-            font-size: 13px;
-        }
-
-        .legend-grid {
+        /* 车库网格 */
+        .garage-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-top: 10px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+            max-height: 280px;
+            overflow-y: auto;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
         }
 
-        .legend-item {
+        .skin-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 15px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .skin-card:hover { background: rgba(255, 255, 255, 0.1); transform: translateY(-2px); }
+        .skin-card.selected { border-color: var(--primary); background: rgba(0, 212, 255, 0.1); }
+        .skin-card.locked { opacity: 0.6; filter: grayscale(0.8); }
+        
+        .skin-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            margin: 0 auto 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+
+        .skin-name { font-size: 12px; font-weight: bold; margin-bottom: 4px; }
+        .skin-price { font-size: 12px; color: var(--gold); font-weight: bold; }
+        .lock-icon { position: absolute; top: 5px; right: 5px; font-size: 12px; }
+
+        /* 购车信息面板 */
+        .buy-info-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .info-item { display: flex; flex-direction: column; align-items: center; min-width: 80px; }
+        .info-label { color: #94a3b8; font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
+        .info-value { font-weight: bold; font-size: 16px; }
+        .text-green { color: var(--success); }
+        .text-red { color: var(--danger); }
+        .text-blue { color: var(--primary); }
+
+        /* HUD */
+        #gameHUD {
+            justify-content: space-between;
+            align-items: stretch;
+            padding: 20px;
+            box-sizing: border-box;
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+        .hud-top { display: flex; justify-content: space-between; pointer-events: none; }
+        .stat-box {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: bold;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .text-score { color: var(--primary); }
+        .text-coin { color: var(--gold); }
+        .text-level { color: var(--secondary); }
+
+        #message-area {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 20px #000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 20;
             text-align: center;
+            width: 80%;
+            background: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
         }
-
-        .legend-emoji {
-            font-size: 24px;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        @media (max-width: 500px) {
-            .legend-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            #gameCanvas {
-                width: 320px;
-                height: 480px;
-            }
+        
+        .controls-hint {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            pointer-events: none;
+            margin-top: auto;
+            padding-bottom: 20px;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <h1>🏎️ 极速赛车 - 道具版</h1>
-    
-    <div class="info">
-        <div class="info-item">🏆 得分：<span id="score">0</span></div>
-        <div class="info-item">⭐ 等级：<span id="level">1</span></div>
-        <div class="info-item">💰 金币：<span id="coins">0</span></div>
-    </div>
 
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="canvas-container"></div>
 
-    <!-- 道具状态条 -->
-    <div class="powerup-status">
-        <div class="powerup-bar shield" id="shieldBar">
-            <span class="powerup-icon">🛡️</span>
-            <span class="powerup-text">护盾</span>
-            <div class="powerup-timer">
-                <div class="powerup-fill shield-fill" id="shieldFill" style="width: 100%"></div>
+    <div class="ui-layer">
+        <div id="message-area"></div>
+
+        <!-- 首页 -->
+        <div class="menu-panel" id="mainMenu">
+            <h1>3D 极速赛车</h1>
+            <p class="subtitle">挑战极限，赚取金币买车</p>
+            
+            <div class="btn-group">
+                <button class="btn" id="btnStartGame">▶️ 开始游戏</button>
+                <button class="btn btn-secondary" id="btnOpenGarage">🚗 进入车库</button>
+            </div>
+
+            <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <span style="color: #94a3b8; font-size: 14px;">当前余额:</span>
+                <span id="menuCoinsDisplay" style="color: var(--gold); font-weight: bold; font-size: 22px; margin-left: 5px;">0</span>
+                <span style="color: var(--gold); font-size: 14px;"> 💰</span>
+            </div>
+            <p style="font-size: 12px; color: #64748b; margin-top: 10px;">💡 提示：如果无法购买，请进入车库点击右上角“重置存档”</p>
+        </div>
+
+        <!-- 车库 -->
+        <div class="menu-panel hidden" id="garageMenu" style="width: 580px;">
+            <!-- 重置按钮 -->
+            <div class="reset-container">
+                <button class="btn btn-danger" id="btnResetSave" title="清除所有存档数据">🗑️ 重置存档</button>
+            </div>
+
+            <h2>🚗 车库中心</h2>
+            <p class="subtitle">点击卡片预览 • 查看下方状态购买</p>
+            
+            <!-- 详细信息面板 -->
+            <div class="buy-info-panel">
+                <div class="info-item">
+                    <span class="info-label">选中车辆</span>
+                    <span class="info-value" id="infoCarName" style="color: #fff;">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">车辆价格</span>
+                    <span class="info-value" id="infoCarPrice" style="color: var(--gold);">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">你的金币</span>
+                    <span class="info-value" id="infoUserCoins" style="color: var(--gold);">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">状态</span>
+                    <span class="info-value" id="infoStatus" style="color: #94a3b8;">-</span>
+                </div>
+            </div>
+
+            <div class="garage-grid" id="skinGrid"></div>
+
+            <div class="btn-group">
+                <button class="btn btn-gold" id="btnBuyOrEquip">加载中...</button>
+                <button class="btn btn-secondary" id="btnBackToHome">↩️ 返回首页</button>
             </div>
         </div>
-        <div class="powerup-bar boost" id="boostBar">
-            <span class="powerup-icon">⚡</span>
-            <span class="powerup-text">加速</span>
-            <div class="powerup-timer">
-                <div class="powerup-fill boost-fill" id="boostFill" style="width: 100%"></div>
+
+        <!-- 结算 -->
+        <div class="menu-panel hidden" id="gameOverMenu">
+            <h1 style="color: var(--danger); font-size: 36px;">💥 游戏结束</h1>
+            <p class="subtitle">继续挑战赚更多金币！</p>
+            
+            <div style="display: flex; justify-content: center; gap: 20px; margin-bottom: 25px;">
+                <div class="stat-box">
+                    <span style="color:#fff; font-size:14px;">得分</span><br>
+                    <span id="finalScore" class="text-score" style="font-size:24px;">0</span>
+                </div>
+                <div class="stat-box">
+                    <span style="color:#fff; font-size:14px;">赚取金币</span><br>
+                    <span id="finalCoins" class="text-coin" style="font-size:24px;">0</span>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn" id="btnRestart">🔄 再玩一次</button>
+                <button class="btn btn-secondary" id="btnHomeFromEnd">🏠 返回首页</button>
             </div>
         </div>
-    </div>
 
-    <div class="key-display">
-        <div class="key" id="keyLeft">←</div>
-        <div class="key" id="keyUp">↑</div>
-        <div class="key" id="keyDown">↓</div>
-        <div class="key" id="keyRight">→</div>
-    </div>
-
-    <div class="btn-container">
-        <button class="btn" id="startBtn">▶️ 开始游戏</button>
-        <button class="btn" id="resetBtn" style="display:none;">🔄 重新开始</button>
-    </div>
-
-    <div id="message">点击"开始游戏"按钮开始</div>
-
-    <div class="controls">
-        <p>← → 或 A D 键左右移动</p>
-        <p>↑ ↓ 或 W S 键上下移动</p>
-    </div>
-
-    <!-- 道具图例 -->
-    <div class="legend">
-        <strong>📦 道具体系：</strong>
-        <div class="legend-grid">
-            <div class="legend-item">
-                <span class="legend-emoji">🛡️</span>
-                <div>护盾</div>
-                <div style="font-size: 11px; opacity: 0.7;">5秒无敌</div>
+        <!-- 游戏 HUD -->
+        <div id="gameHUD">
+            <div class="hud-top">
+                <div style="display:flex; gap:15px;">
+                    <div class="stat-box">🏆 <span id="hudScore" class="text-score">0</span></div>
+                    <div class="stat-box">⭐ <span id="hudLevel" class="text-level">1</span></div>
+                </div>
+                <div class="stat-box">💰 <span id="hudCoins" class="text-coin">0</span></div>
             </div>
-            <div class="legend-item">
-                <span class="legend-emoji">⚡</span>
-                <div>加速</div>
-                <div style="font-size: 11px; opacity: 0.7;">3秒提速</div>
-            </div>
-            <div class="legend-item">
-                <span class="legend-emoji">💰</span>
-                <div>金币</div>
-                <div style="font-size: 11px; opacity: 0.7;">+10金币</div>
-            </div>
-            <div class="legend-item">
-                <span class="legend-emoji">💣</span>
-                <div>炸弹</div>
-                <div style="font-size: 11px; opacity: 0.7;">清除障碍</div>
-            </div>
+            <div class="controls-hint">← → 移动 | ↑ ↓ 加速</div>
         </div>
     </div>
 
     <script>
-        // 获取元素
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const startBtn = document.getElementById('startBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const scoreEl = document.getElementById('score');
-        const levelEl = document.getElementById('level');
-        const coinsEl = document.getElementById('coins');
-        const messageEl = document.getElementById('message');
-        const shieldBar = document.getElementById('shieldBar');
-        const boostBar = document.getElementById('boostBar');
-        const shieldFill = document.getElementById('shieldFill');
-        const boostFill = document.getElementById('boostFill');
-
-        // 按键状态
-        const keys = { left: false, right: false, up: false, down: false };
-
-        // 游戏变量
-        let gameRunning = false;
-        let score = 0;
-        let level = 1;
-        let coins = 0;
-        let speed = 3;
-        let player = {};
-        let obstacles = [];
-        let roadMarks = [];
-        let powerups = []; // 道具数组
-        let particles = []; // 粒子效果
-        let animId = null;
-
-        // 道具效果状态
-        let shieldActive = false;
-        let shieldTime = 0;
-        let shieldMaxTime = 5000;
-        let boostActive = false;
-        let boostTime = 0;
-        let boostMaxTime = 3000;
-
-        // 道具类型配置
-        const powerupTypes = [
-            { type: 'shield', emoji: '🛡️', color: '#00d4ff', chance: 0.15 },
-            { type: 'boost', emoji: '⚡', color: '#fbbf24', chance: 0.15 },
-            { type: 'coin', emoji: '💰', color: '#22c55e', chance: 0.25 },
-            { type: 'bomb', emoji: '💣', color: '#ef4444', chance: 0.1 }
+        // --- 配置与数据 ---
+        const SKINS = [
+            { id: 'blue', name: '蓝色闪电', color: 0x00d4ff, price: 0 },
+            { id: 'red', name: '红色风暴', color: 0xef4444, price: 150 },
+            { id: 'green', name: '绿色毒蛇', color: 0x22c55e, price: 300 },
+            { id: 'purple', name: '紫色幻影', color: 0xa855f7, price: 500 },
+            { id: 'gold', name: '黄金战神', color: 0xfbbf24, price: 800 },
+            { id: 'black', name: '暗夜骑士', color: 0x111827, price: 1200 }
         ];
 
-        // 初始化玩家
-        function initPlayer() {
-            player = {
-                x: canvas.width / 2 - 25,
-                y: canvas.height - 100,
-                width: 50,
-                height: 80,
-                speed: 7,
-                baseSpeed: 7
-            };
-        }
+        // 默认数据
+        const DEFAULT_DATA = {
+            coins: 0,
+            ownedSkins: ['blue'],
+            selectedSkin: 'blue'
+        };
 
-        // 初始化游戏
-        function initGame() {
-            obstacles = [];
-            roadMarks = [];
-            powerups = [];
-            particles = [];
-            score = 0;
-            level = 1;
-            coins = 0;
-            speed = 3;
+        let userData = { ...DEFAULT_DATA };
+
+        const STATE = { MENU: 0, GARAGE: 1, PLAYING: 2, GAMEOVER: 3 };
+        let currentState = STATE.MENU;
+        let gameData = { score: 0, level: 1, speed: 0.5, baseSpeed: 0.5, sessionCoins: 0 };
+        let player = { x: 0, shield: false, boost: false };
+        let keys = { left: false, right: false, up: false, down: false };
+        let obstacles = [], powerups = [], particles = [], roadMarks = [];
+        let lastTime = 0, spawnTimer = 0, powerupTimer = 0;
+
+        let scene, camera, renderer, playerMesh, playerShieldMesh;
+
+        // --- 初始化 ---
+        function init() {
+            loadData();
+            initThree();
+            showScreen(STATE.MENU);
             
-            // 重置道具状态
-            shieldActive = false;
-            boostActive = false;
-            updatePowerupUI();
-            
-            initPlayer();
-            updateUI();
+            window.addEventListener('resize', onWindowResize);
+            setupInputs();
+            bindButtons();
+            requestAnimationFrame(animate);
         }
 
-        // 更新UI
-        function updateUI() {
-            scoreEl.textContent = score;
-            levelEl.textContent = level;
-            coinsEl.textContent = coins;
-        }
-
-        // 更新按键显示
-        function updateKeyDisplay() {
-            document.getElementById('keyLeft').classList.toggle('active', keys.left);
-            document.getElementById('keyRight').classList.toggle('active', keys.right);
-            document.getElementById('keyUp').classList.toggle('active', keys.up);
-            document.getElementById('keyDown').classList.toggle('active', keys.down);
-        }
-
-        // 更新道具UI
-        function updatePowerupUI() {
-            if (shieldActive) {
-                shieldBar.style.display = 'flex';
-                const percent = ((shieldTime - Date.now()) / shieldMaxTime) * 100;
-                shieldFill.style.width = Math.max(0, percent) + '%';
-            } else {
-                shieldBar.style.display = 'none';
+        function loadData() {
+            try {
+                const saved = localStorage.getItem('racing3d_final_data');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    // 合并数据，防止旧存档缺少字段
+                    userData = { ...DEFAULT_DATA, ...parsed };
+                    
+                    // 数据清洗：确保类型正确
+                    userData.coins = Number(userData.coins) || 0;
+                    if (!Array.isArray(userData.ownedSkins)) userData.ownedSkins = ['blue'];
+                    if (!userData.selectedSkin) userData.selectedSkin = 'blue';
+                    
+                    console.log("✅ 存档加载成功:", userData);
+                } else {
+                    console.log("ℹ️ 未找到存档，使用默认数据");
+                }
+            } catch (e) {
+                console.error("❌ 存档损坏，重置为默认:", e);
+                userData = { ...DEFAULT_DATA };
             }
+            updateCoinDisplays();
+        }
 
-            if (boostActive) {
-                boostBar.style.display = 'flex';
-                const percent = ((boostTime - Date.now()) / boostMaxTime) * 100;
-                boostFill.style.width = Math.max(0, percent) + '%';
-            } else {
-                boostBar.style.display = 'none';
+        function saveData() {
+            try {
+                localStorage.setItem('racing3d_final_data', JSON.stringify(userData));
+                console.log("💾 存档已保存:", userData);
+                updateCoinDisplays();
+            } catch (e) {
+                console.error("❌ 存档失败:", e);
+                showMessage("❌ 保存失败！请检查浏览器设置", "#ef4444");
             }
         }
 
-        // 生成道具
-        function spawnPowerup() {
+        function resetData() {
+            if(confirm("确定要重置所有存档吗？这将清空所有金币和车辆！")) {
+                localStorage.removeItem('racing3d_final_data');
+                userData = { ...DEFAULT_DATA };
+                saveData();
+                showMessage("✅ 存档已重置！刷新车库...", "#22c55e");
+                setTimeout(() => {
+                    renderGarageGrid();
+                }, 500);
+            }
+        }
+
+        function updateCoinDisplays() {
+            const coinVal = Number(userData.coins);
+            document.getElementById('menuCoinsDisplay').textContent = coinVal;
+            document.getElementById('hudCoins').textContent = coinVal + (currentState === STATE.PLAYING ? gameData.sessionCoins : 0);
+            if(currentState === STATE.GARAGE) updateBuyInfoPanel();
+        }
+
+        // --- 界面控制 ---
+        function showScreen(state) {
+            currentState = state;
+            document.getElementById('mainMenu').classList.add('hidden');
+            document.getElementById('garageMenu').classList.add('hidden');
+            document.getElementById('gameOverMenu').classList.add('hidden');
+            document.getElementById('gameHUD').style.display = 'none';
+
+            if (state === STATE.MENU) {
+                document.getElementById('mainMenu').classList.remove('hidden');
+                updateCameraForMenu();
+            } else if (state === STATE.GARAGE) {
+                document.getElementById('garageMenu').classList.remove('hidden');
+                renderGarageGrid();
+                updateCameraForGarage();
+            } else if (state === STATE.PLAYING) {
+                document.getElementById('gameHUD').style.display = 'flex';
+                updateCameraForGame();
+            } else if (state === STATE.GAMEOVER) {
+                document.getElementById('gameOverMenu').classList.remove('hidden');
+                updateCameraForMenu();
+            }
+        }
+
+        function showMessage(text, color = '#fff') {
+            const el = document.getElementById('message-area');
+            el.innerHTML = text.replace(/\n/g, '<br>');
+            el.style.color = color;
+            el.style.borderColor = color;
+            el.style.opacity = 1;
+            setTimeout(() => { el.style.opacity = 0; }, 2000);
+        }
+
+        // --- 3D 引擎 (略去部分重复代码，保持精简) ---
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            createEnvironment();
+            createPlayer(0x00d4ff);
+        }
+
+        function createEnvironment() {
+            const roadGeo = new THREE.PlaneGeometry(12, 400);
+            const roadMat = new THREE.MeshPhongMaterial({ color: 0x1e293b });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -150;
+            road.receiveShadow = true;
+            scene.add(road);
+
+            const groundGeo = new THREE.PlaneGeometry(300, 400);
+            const groundMat = new THREE.MeshPhongMaterial({ color: 0x020617 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.z = -150;
+            ground.position.y = -0.1;
+            scene.add(ground);
+
+            for(let i=0; i<30; i++) {
+                const geo = new THREE.PlaneGeometry(0.4, 3);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.set(0, 0.02, -i * 10);
+                scene.add(mesh);
+                roadMarks.push(mesh);
+            }
+        }
+
+        function createPlayer(colorHex) {
+            if (playerMesh) scene.remove(playerMesh);
+            playerMesh = new THREE.Group();
+
+            const bodyGeo = new THREE.BoxGeometry(1.8, 0.8, 3.2);
+            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 100 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.6;
+            body.castShadow = true;
+            playerMesh.add(body);
+
+            const cabinGeo = new THREE.BoxGeometry(1.4, 0.6, 1.8);
+            const cabinMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+            cabin.position.set(0, 1.1, -0.2);
+            playerMesh.add(cabin);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.4, 24);
+            const wheelMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            [[-1, 1.2], [1, 1.2], [-1, -1.2], [1, -1.2]].forEach(([x, z]) => {
+                const w = new THREE.Mesh(wheelGeo, wheelMat);
+                w.rotation.z = Math.PI / 2;
+                w.position.set(x, 0.35, z);
+                playerMesh.add(w);
+            });
+
+            const flameGeo = new THREE.ConeGeometry(0.3, 1, 8);
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.8 });
+            const flame = new THREE.Mesh(flameGeo, flameMat);
+            flame.rotation.x = Math.PI / 2;
+            flame.position.z = 1.8;
+            flame.name = 'flame';
+            flame.visible = false;
+            playerMesh.add(flame);
+
+            const shieldGeo = new THREE.SphereGeometry(2.2, 32, 32);
+            const shieldMat = new THREE.MeshPhongMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
+            playerShieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+            playerShieldMesh.visible = false;
+            playerMesh.add(playerShieldMesh);
+
+            scene.add(playerMesh);
+        }
+
+        function createObstacle(zPos) {
+            const lane = Math.floor(Math.random() * 5) - 2;
+            const xPos = lane * 3;
+            const type = Math.random();
+            let mesh;
+            if (type < 0.5) {
+                const geo = new THREE.BoxGeometry(2, 2, 2);
+                const mat = new THREE.MeshPhongMaterial({ color: 0xef4444 });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = 1;
+            } else {
+                const geo = new THREE.ConeGeometry(1.2, 2.5, 16);
+                const mat = new THREE.MeshPhongMaterial({ color: 0xf97316 });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = 1.25;
+            }
+            mesh.position.x = xPos;
+            mesh.position.z = zPos;
+            mesh.castShadow = true;
+            scene.add(mesh);
+            obstacles.push({ mesh, active: true });
+        }
+
+        function createPowerup(zPos) {
             const rand = Math.random();
-            let cumulativeChance = 0;
-            let selectedType = null;
+            let type, color;
+            if (rand < 0.3) { type = 'coin'; color = 0x22c55e; }
+            else if (rand < 0.5) { type = 'shield'; color = 0x00d4ff; }
+            else if (rand < 0.7) { type = 'boost'; color = 0xfbbf24; }
+            else { type = 'bomb'; color = 0xef4444; }
 
-            for (const pType of powerupTypes) {
-                cumulativeChance += pType.chance;
-                if (rand < cumulativeChance) {
-                    selectedType = pType;
-                    break;
+            const geo = new THREE.OctahedronGeometry(0.8);
+            const mat = new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.6 });
+            const mesh = new THREE.Mesh(geo, mat);
+            const lane = Math.floor(Math.random() * 5) - 2;
+            mesh.position.set(lane * 3, 1.5, zPos);
+            scene.add(mesh);
+            powerups.push({ mesh, type, active: true });
+        }
+
+        function createExplosion(pos, color, count = 15) {
+            const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+            const mat = new THREE.MeshBasicMaterial({ color: color });
+            for (let i = 0; i < count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                const vel = new THREE.Vector3((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5+0.2, (Math.random()-0.5)*0.5);
+                scene.add(mesh);
+                particles.push({ mesh, vel, life: 1.0 });
+            }
+        }
+
+        function updateCameraForMenu() {
+            camera.position.set(0, 2, 8);
+            camera.lookAt(0, 1, 0);
+            playerMesh.position.set(0, 0, 0);
+            playerMesh.rotation.set(0, 0, 0);
+        }
+        function updateCameraForGarage() {
+            camera.position.set(0, 2, 6);
+            camera.lookAt(0, 1, 0);
+            playerMesh.position.set(0, 0, 0);
+        }
+        function updateCameraForGame() {
+            camera.position.set(0, 7, 10);
+            camera.lookAt(0, 0, -10);
+        }
+
+        // --- 车库逻辑 (核心修复) ---
+        let tempSelectedSkin = 'blue';
+
+        function updateBuyInfoPanel() {
+            const skin = SKINS.find(s => s.id === tempSelectedSkin);
+            if (!skin) return;
+            
+            const myCoins = Number(userData.coins);
+            const price = Number(skin.price);
+            const isOwned = userData.ownedSkins.includes(skin.id);
+            
+            document.getElementById('infoCarName').textContent = skin.name;
+            document.getElementById('infoCarPrice').textContent = isOwned ? '已拥有' : price;
+            document.getElementById('infoUserCoins').textContent = myCoins;
+            
+            const statusEl = document.getElementById('infoStatus');
+            if (isOwned) {
+                if (userData.selectedSkin === skin.id) {
+                    statusEl.textContent = '当前装备';
+                    statusEl.className = 'info-value text-green';
+                } else {
+                    statusEl.textContent = '可装备';
+                    statusEl.className = 'info-value text-blue';
+                }
+            } else {
+                if (myCoins >= price) {
+                    statusEl.textContent = '可购买';
+                    statusEl.className = 'info-value text-green';
+                } else {
+                    statusEl.textContent = `差 ${price - myCoins} 金`;
+                    statusEl.className = 'info-value text-red';
+                }
+            }
+        }
+
+        function renderGarageGrid() {
+            const grid = document.getElementById('skinGrid');
+            grid.innerHTML = '';
+            
+            // 确保选中有效皮肤
+            if (!userData.ownedSkins.includes(tempSelectedSkin)) {
+                tempSelectedSkin = userData.selectedSkin;
+            }
+            if (!tempSelectedSkin) tempSelectedSkin = 'blue';
+
+            SKINS.forEach(skin => {
+                const isOwned = userData.ownedSkins.includes(skin.id);
+                const isSelected = skin.id === tempSelectedSkin;
+                const colorStr = '#' + skin.color.toString(16).padStart(6, '0');
+
+                const card = document.createElement('div');
+                card.className = `skin-card ${isSelected ? 'selected' : ''} ${!isOwned ? 'locked' : ''}`;
+                card.onclick = () => {
+                    tempSelectedSkin = skin.id;
+                    renderGarageGrid();
+                    previewSkin(skin.id);
+                    updateBuyInfoPanel();
+                    updateBuyButton();
+                };
+                
+                card.innerHTML = `
+                    <div class="lock-icon">${!isOwned ? '🔒' : ''}</div>
+                    <div class="skin-preview" style="background: ${colorStr}; box-shadow: 0 0 10px ${colorStr}"></div>
+                    <div class="skin-name">${skin.name}</div>
+                    ${isOwned 
+                        ? (isSelected ? '<div style="color:#00d4ff; font-size:10px; margin-top:2px;">已装备</div>' : '')
+                        : `<div class="skin-price">💰 ${skin.price}</div>`
+                    }
+                `;
+                grid.appendChild(card);
+            });
+            
+            previewSkin(tempSelectedSkin);
+            updateBuyInfoPanel();
+            updateBuyButton();
+        }
+
+        function previewSkin(id) {
+            const skin = SKINS.find(s => s.id === id);
+            if (playerMesh && playerMesh.children[0]) {
+                playerMesh.children[0].material.color.setHex(skin.color);
+            }
+        }
+
+        function updateBuyButton() {
+            const btn = document.getElementById('btnBuyOrEquip');
+            const skin = SKINS.find(s => s.id === tempSelectedSkin);
+            if (!skin) return;
+
+            const myCoins = Number(userData.coins);
+            const price = Number(skin.price);
+            const isOwned = userData.ownedSkins.includes(skin.id);
+            
+            if (isOwned) {
+                if (userData.selectedSkin === skin.id) {
+                    btn.textContent = '✅ 当前装备';
+                    btn.disabled = true;
+                } else {
+                    btn.textContent = '⬇️ 装备此车';
+                    btn.disabled = false;
+                }
+                btn.className = 'btn btn-secondary';
+            } else {
+                btn.textContent = `💰 购买 (${price})`;
+                btn.className = 'btn btn-gold';
+                btn.disabled = false;
+                
+                if (myCoins < price) {
+                    btn.style.opacity = '0.6';
+                    btn.title = `金币不足！需要 ${price}，你有 ${myCoins}`;
+                } else {
+                    btn.style.opacity = '1';
+                    btn.title = '点击购买';
+                }
+            }
+        }
+
+        function handleBuyOrEquip() {
+            const skin = SKINS.find(s => s.id === tempSelectedSkin);
+            if (!skin) return;
+
+            const myCoins = Number(userData.coins);
+            const price = Number(skin.price);
+            const isOwned = userData.ownedSkins.includes(skin.id);
+            
+            console.log(`尝试操作: ${skin.name}, 拥有: ${isOwned}, 金币: ${myCoins}, 价格: ${price}`);
+
+            if (isOwned) {
+                userData.selectedSkin = skin.id;
+                saveData();
+                showMessage(`✅ 已装备：${skin.name}`, '#00d4ff');
+                renderGarageGrid();
+            } else {
+                if (myCoins >= price) {
+                    userData.coins = myCoins - price;
+                    userData.ownedSkins.push(skin.id);
+                    userData.selectedSkin = skin.id;
+                    saveData();
+                    showMessage(`🎉 购买成功！\n已自动装备 ${skin.name}`, '#22c55e');
+                    renderGarageGrid();
+                } else {
+                    const needed = price - myCoins;
+                    showMessage(`❌ 购买失败!\n金币不足\n需要: ${price}\n现有: ${myCoins}\n还差: ${needed}`, '#ef4444');
+                    
+                    // 震动反馈
+                    const btn = document.getElementById('btnBuyOrEquip');
+                    btn.style.transform = 'translateX(5px)';
+                    setTimeout(() => btn.style.transform = 'translateX(-5px)', 100);
+                    setTimeout(() => btn.style.transform = 'translateX(5px)', 200);
+                    setTimeout(() => btn.style.transform = 'translateX(0)', 300);
+                }
+            }
+        }
+
+        // --- 游戏逻辑 ---
+        function startGame() {
+            gameData.score = 0;
+            gameData.level = 1;
+            gameData.baseSpeed = 0.5;
+            gameData.speed = 0.5;
+            gameData.sessionCoins = 0;
+            player.x = 0;
+            player.shield = false;
+            player.boost = false;
+            
+            obstacles.forEach(o => scene.remove(o.mesh));
+            powerups.forEach(p => scene.remove(p.mesh));
+            particles.forEach(p => scene.remove(p.mesh));
+            obstacles = []; powerups = []; particles = [];
+
+            const skin = SKINS.find(s => s.id === userData.selectedSkin);
+            createPlayer(skin.color);
+            playerMesh.position.set(0, 0, 0);
+            playerShieldMesh.visible = false;
+
+            showScreen(STATE.PLAYING);
+            lastTime = performance.now();
+        }
+
+        function gameOver() {
+            const scoreBonus = Math.floor(gameData.score / 100) * 10;
+            const baseBonus = 20;
+            const totalEarned = baseBonus + scoreBonus + gameData.sessionCoins;
+
+            userData.coins = Number(userData.coins) + totalEarned;
+            saveData();
+
+            document.getElementById('finalScore').textContent = gameData.score;
+            document.getElementById('finalCoins').textContent = totalEarned;
+            showScreen(STATE.GAMEOVER);
+        }
+
+        function activatePowerup(type) {
+            if (type === 'shield') {
+                player.shield = true;
+                playerShieldMesh.visible = true;
+                setTimeout(() => { player.shield = false; playerShieldMesh.visible = false; }, 5000);
+                showMessage('🛡️ 护盾激活!', '#00d4ff');
+            } else if (type === 'boost') {
+                player.boost = true;
+                gameData.speed = 1.2;
+                const flame = playerMesh.getObjectByName('flame');
+                if(flame) flame.visible = true;
+                setTimeout(() => { 
+                    player.boost = false; 
+                    gameData.speed = gameData.baseSpeed + (gameData.level * 0.05);
+                    if(flame) flame.visible = false;
+                }, 3000);
+                showMessage('⚡ 速度提升!', '#fbbf24');
+            } else if (type === 'coin') {
+                gameData.sessionCoins += 5;
+                gameData.score += 20;
+                showMessage('💰 +5 金币', '#22c55e');
+            } else if (type === 'bomb') {
+                obstacles.forEach(o => {
+                    if (o.active) {
+                        createExplosion(o.mesh.position, 0xef4444, 10);
+                        scene.remove(o.mesh);
+                        o.active = false;
+                    }
+                });
+                gameData.score += 50;
+                showMessage('💣 清屏!', '#ef4444');
+            }
+            updateHUD();
+        }
+
+        function updateHUD() {
+            document.getElementById('hudScore').textContent = gameData.score;
+            document.getElementById('hudLevel').textContent = gameData.level;
+            document.getElementById('hudCoins').textContent = Number(userData.coins) + gameData.sessionCoins;
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            const delta = (time - lastTime) / 1000;
+            lastTime = time;
+
+            if (currentState === STATE.GARAGE) {
+                playerMesh.rotation.y += 0.005;
+                playerMesh.position.y = Math.sin(time * 0.002) * 0.1;
+                renderer.render(scene, camera);
+                return;
+            }
+
+            if (currentState !== STATE.PLAYING) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const moveSpeed = 15 * delta;
+            if (keys.left) player.x -= moveSpeed;
+            if (keys.right) player.x += moveSpeed;
+            player.x = Math.max(-5, Math.min(5, player.x));
+            
+            playerMesh.position.x = player.x;
+            playerMesh.rotation.z = (keys.left ? 0.15 : (keys.right ? -0.15 : 0));
+
+            const currentSpeed = gameData.speed * (player.boost ? 1.5 : 1);
+            const moveDist = currentSpeed * 60 * delta;
+            
+            roadMarks.forEach(mark => {
+                mark.position.z += moveDist;
+                if (mark.position.z > 10) mark.position.z = -290;
+            });
+
+            spawnTimer -= delta;
+            if (spawnTimer <= 0) {
+                createObstacle(-300);
+                spawnTimer = Math.max(0.4, 1.2 - gameData.level * 0.08);
+            }
+            
+            powerupTimer -= delta;
+            if (powerupTimer <= 0) {
+                createPowerup(-300);
+                powerupTimer = 3 + Math.random() * 2;
+            }
+
+            const pBox = new THREE.Box3().setFromObject(playerMesh);
+            pBox.expandByScalar(-0.3);
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                if (!obs.active) continue;
+                obs.mesh.position.z += moveDist;
+                
+                const oBox = new THREE.Box3().setFromObject(obs.mesh);
+                if (pBox.intersectsBox(oBox)) {
+                    if (player.shield) {
+                        createExplosion(obs.mesh.position, 0x00d4ff, 15);
+                        scene.remove(obs.mesh);
+                        obs.active = false;
+                        gameData.score += 10;
+                        gameData.sessionCoins += 2; 
+                        updateHUD();
+                    } else {
+                        createExplosion(playerMesh.position, 0xef4444, 30);
+                        gameOver();
+                        return;
+                    }
+                }
+                
+                if (obs.mesh.position.z > 10) {
+                    scene.remove(obs.mesh);
+                    obstacles.splice(i, 1);
+                    gameData.score += 10;
+                    if (gameData.score % 200 === 0) {
+                        gameData.level++;
+                        gameData.baseSpeed += 0.05;
+                        showMessage(`⭐ 等级 ${gameData.level}!`, '#a855f7');
+                    }
+                    updateHUD();
                 }
             }
 
-            if (!selectedType) return;
-
-            powerups.push({
-                x: Math.random() * (canvas.width - 40) + 10,
-                y: -40,
-                size: 35,
-                type: selectedType.type,
-                emoji: selectedType.emoji,
-                color: selectedType.color
-            });
-        }
-
-        // 创建粒子效果
-        function createParticles(x, y, color, count = 15) {
-            for (let i = 0; i < count; i++) {
-                particles.push({
-                    x: x,
-                    y: y,
-                    vx: (Math.random() - 0.5) * 8,
-                    vy: (Math.random() - 0.5) * 8,
-                    size: Math.random() * 4 + 2,
-                    color: color,
-                    life: 1
-                });
-            }
-        }
-
-        // 激活道具效果
-        function activatePowerup(type) {
-            const now = Date.now();
-            
-            switch(type) {
-                case 'shield':
-                    shieldActive = true;
-                    shieldTime = now + shieldMaxTime;
-                    messageEl.textContent = '🛡️ 护盾激活！5秒无敌！';
-                    break;
-                case 'boost':
-                    boostActive = true;
-                    boostTime = now + boostMaxTime;
-                    player.speed = player.baseSpeed * 1.5;
-                    messageEl.textContent = '⚡ 加速激活！速度提升！';
-                    break;
-                case 'coin':
-                    coins += 10;
-                    score += 20;
-                    messageEl.textContent = '💰 获得10金币！';
-                    updateUI();
-                    break;
-                case 'bomb':
-                    // 清除所有障碍物
-                    obstacles.forEach(obs => {
-                        createParticles(obs.x + obs.width/2, obs.y + obs.height/2, '#ef4444', 10);
-                    });
-                    obstacles = [];
-                    score += 50;
-                    messageEl.textContent = '💣 炸弹清屏！+50分！';
-                    updateUI();
-                    break;
-            }
-            updateUI();
-        }
-
-        // 绘制道路
-        function drawRoad() {
-            ctx.fillStyle = '#2d2d2d';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, 8, canvas.height);
-            ctx.fillRect(canvas.width - 8, 0, 8, canvas.height);
-
-            ctx.fillStyle = '#ef4444';
-            ctx.fillRect(8, 0, 4, canvas.height);
-            ctx.fillRect(canvas.width - 12, 0, 4, canvas.height);
-
-            if (roadMarks && Array.isArray(roadMarks)) {
-                ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                roadMarks.forEach(m => {
-                    if (m && typeof m.y !== 'undefined') { // 已修复：检查对象是否存在及y属性
-                        ctx.fillRect(canvas.width/2 - 4, m.y, 8, 30);
-                    }
-                });
-            }
-        }
-
-        // 绘制赛车
-        function drawCar(x, y, w, h, color, hasShield = false, isBoosting = false) {
-            // 车身
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, w, h);
-
-            // 车窗
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(x + 7, y + 15, w - 14, 20);
-
-            // 车轮
-            ctx.fillStyle = '#333';
-            ctx.fillRect(x - 5, y + 10, 5, 15);
-            ctx.fillRect(x + w, y + 10, 5, 15);
-            ctx.fillRect(x - 5, y + h - 25, 5, 15);
-            ctx.fillRect(x + w, y + h - 25, 5, 15);
-
-            // 车灯
-            ctx.fillStyle = '#fef3c7';
-            ctx.fillRect(x + 8, y, 10, 5);
-            ctx.fillRect(x + w - 18, y, 10, 5);
-
-            // 护盾效果
-            if (hasShield) {
-                ctx.strokeStyle = '#00d4ff';
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.arc(x + w/2, y + h/2, w/1.3, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.fillStyle = 'rgba(0, 212, 255, 0.15)';
-                ctx.fill();
-            }
-
-            // 加速火焰
-            if (isBoosting) {
-                ctx.fillStyle = '#fbbf24';
-                ctx.beginPath();
-                ctx.moveTo(x + 15, y + h);
-                ctx.lineTo(x + w/2, y + h + 25);
-                ctx.lineTo(x + w - 15, y + h);
-                ctx.fill();
-            }
-        }
-
-        // 绘制道具
-        function drawPowerups() {
-            if (!powerups || !Array.isArray(powerups)) return;
-            
-            powerups.forEach(p => {
-                if (!p || typeof p.y === 'undefined') return; // 已修复：检查对象存在性
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                const pup = powerups[i];
+                if (!pup.active) continue;
+                pup.mesh.position.z += moveDist;
+                pup.mesh.rotation.y += 3 * delta;
                 
-                // 光晕效果
-                const gradient = ctx.createRadialGradient(
-                    p.x + p.size/2, p.y + p.size/2, 0,
-                    p.x + p.size/2, p.y + p.size/2, p.size
-                );
-                gradient.addColorStop(0, p.color);
-                gradient.addColorStop(1, 'transparent');
+                const puBox = new THREE.Box3().setFromObject(pup.mesh);
+                if (pBox.intersectsBox(puBox)) {
+                    createExplosion(pup.mesh.position, pup.mesh.material.color.getHex(), 15);
+                    scene.remove(pup.mesh);
+                    pup.active = false;
+                    activatePowerup(pup.type);
+                }
                 
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 道具本体
-                ctx.fillStyle = p.color;
-                ctx.beginPath();
-                ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Emoji图标
-                ctx.fillStyle = '#fff';
-                ctx.font = '20px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(p.emoji, p.x + p.size/2, p.y + p.size/2);
-            });
-        }
-
-        // 绘制障碍物
-        function drawObstacles() {
-            const colors = ['#ef4444', '#f97316', '#fbbf24', '#22c55e', '#3b82f6'];
-            if (obstacles && Array.isArray(obstacles)) {
-                obstacles.forEach(o => {
-                    if (!o || typeof o.y === 'undefined') return; // 已修复：检查对象存在性
-                    
-                    ctx.fillStyle = o.color || colors[Math.floor(Math.random() * colors.length)];
-                    ctx.fillRect(o.x, o.y, o.width, o.height);
-                    // 装饰
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                    ctx.fillRect(o.x + 5, o.y + 5, o.width - 10, o.height - 10);
-                });
+                if (pup.mesh.position.z > 10) {
+                    scene.remove(pup.mesh);
+                    powerups.splice(i, 1);
+                }
             }
-        }
 
-        // 绘制粒子
-        function drawParticles() {
-            if (!particles || !Array.isArray(particles)) return;
-            
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
-                if (!p || typeof p.y === 'undefined') continue; // 已修复：检查对象存在性
-                
-                ctx.fillStyle = p.color;
-                ctx.globalAlpha = p.life;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.globalAlpha = 1;
-
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.03;
-
+                p.life -= delta * 2;
+                p.mesh.position.add(p.vel.clone().multiplyScalar(delta * 10));
+                p.mesh.scale.setScalar(p.life);
                 if (p.life <= 0) {
+                    scene.remove(p.mesh);
                     particles.splice(i, 1);
                 }
             }
+
+            renderer.render(scene, camera);
         }
 
-        // 碰撞检测
-        function checkCollision(a, b) {
-            if (!a || !b) return false; // 已修复：检查对象存在性
-            return a.x < b.x + b.width &&
-                   a.x + a.width > b.x &&
-                   a.y < b.y + b.height &&
-                   a.y + a.height > b.y;
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // 游戏更新
-        function update() {
-            const now = Date.now();
-
-            // 检查道具效果是否过期
-            if (shieldActive && now > shieldTime) {
-                shieldActive = false;
-                messageEl.textContent = '护盾已消失';
-            }
-            if (boostActive && now > boostTime) {
-                boostActive = false;
-                player.speed = player.baseSpeed;
-                messageEl.textContent = '加速已结束';
-            }
-            updatePowerupUI();
-
-            // 玩家移动
-            if (keys.left && player.x > 10) player.x -= player.speed;
-            if (keys.right && player.x < canvas.width - player.width - 10) player.x += player.speed;
-            if (keys.up && player.y > 50) player.y -= player.speed * 0.7;
-            if (keys.down && player.y < canvas.height - player.height - 10) player.y += player.speed * 0.7;
-
-            // 生成障碍物
-            if (Math.random() < 0.03 + level * 0.005) {
-                obstacles.push({
-                    x: Math.random() * (canvas.width - 60) + 10,
-                    y: -60,
-                    width: 50,
-                    height: 50
-                });
-            }
-
-            // 生成道具 (每2-4秒生成一个)
-            if (Math.random() < 0.015) {
-                spawnPowerup();
-            }
-
-            // 移动障碍物
-            if (obstacles && Array.isArray(obstacles)) {
-                for (let i = obstacles.length - 1; i >= 0; i--) {
-                    if (!obstacles[i]) continue; // 已修复：检查对象存在性
-                    obstacles[i].y += speed;
-
-                    if (checkCollision(player, obstacles[i])) {
-                        if (shieldActive) {
-                            // 有护盾，消除障碍
-                            createParticles(obstacles[i].x + 25, obstacles[i].y + 25, '#00d4ff', 20);
-                            obstacles.splice(i, 1);
-                            score += 10;
-                            updateUI();
-                        } else {
-                            gameOver();
-                            return;
-                        }
-                    }
-
-                    if (obstacles[i].y > canvas.height) {
-                        obstacles.splice(i, 1);
-                        score += 10;
-                        if (score % 100 === 0) {
-                            level++;
-                            speed += 0.5;
-                        }
-                        updateUI();
-                    }
-                }
-            }
-
-            // 移动道具
-            if (powerups && Array.isArray(powerups)) {
-                for (let i = powerups.length - 1; i >= 0; i--) {
-                    if (!powerups[i]) continue; // 已修复：检查对象存在性
-                    powerups[i].y += speed;
-
-                    // 检测玩家与道具碰撞
-                    if (checkCollision(player, {
-                        x: powerups[i].x,
-                        y: powerups[i].y,
-                        width: powerups[i].size,
-                        height: powerups[i].size
-                    })) {
-                        createParticles(powerups[i].x + powerups[i].size/2, 
-                                      powerups[i].y + powerups[i].size/2, 
-                                      powerups[i].color, 20);
-                        activatePowerup(powerups[i].type);
-                        powerups.splice(i, 1);
-                    }
-
-                    if (powerups[i].y > canvas.height) {
-                        powerups.splice(i, 1);
-                    }
-                }
-            }
-
-            // 道路标记
-            if (Math.random() < 0.1) {
-                roadMarks.push({ y: -40 });
-            }
-            
-            if (roadMarks && Array.isArray(roadMarks)) {
-                for (let i = roadMarks.length - 1; i >= 0; i--) {
-                    if (!roadMarks[i]) continue; // 已修复：检查对象存在性
-                    roadMarks[i].y += speed;
-                    if (roadMarks[i].y > canvas.height) roadMarks.splice(i, 1);
-                }
-            }
+        function setupInputs() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+                if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+                if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
+                if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
+            });
+            document.addEventListener('keyup', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+                if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+                if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
+                if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
+            });
         }
 
-        // 游戏绘制
-        function draw() {
-            drawRoad();
-            drawObstacles();
-            drawPowerups();
-            drawCar(player.x, player.y, player.width, player.height, '#00d4ff', shieldActive, boostActive);
-            drawParticles();
+        function bindButtons() {
+            document.getElementById('btnStartGame').onclick = startGame;
+            document.getElementById('btnOpenGarage').onclick = () => showScreen(STATE.GARAGE);
+            document.getElementById('btnBuyOrEquip').onclick = handleBuyOrEquip;
+            document.getElementById('btnBackToHome').onclick = () => showScreen(STATE.MENU);
+            document.getElementById('btnRestart').onclick = startGame;
+            document.getElementById('btnHomeFromEnd').onclick = () => showScreen(STATE.MENU);
+            document.getElementById('btnResetSave').onclick = resetData;
         }
 
-        // 游戏循环
-        function gameLoop() {
-            if (!gameRunning) return;
-            update();
-            draw();
-            animId = requestAnimationFrame(gameLoop);
-        }
-
-        // 开始游戏
-        function startGame() {
-            if (gameRunning) return;
-            initGame();
-            gameRunning = true;
-            startBtn.style.display = 'none';
-            resetBtn.style.display = 'inline-block';
-            messageEl.textContent = '游戏开始！收集道具！';
-            gameLoop();
-        }
-
-        // 游戏结束
-        function gameOver() {
-            gameRunning = false;
-            if (animId) cancelAnimationFrame(animId);
-            resetBtn.style.display = 'inline-block';
-            messageEl.textContent = '💥 游戏结束！得分：' + score + ' | 金币：' + coins;
-            shieldBar.style.display = 'none';
-            boostBar.style.display = 'none';
-        }
-
-        // 键盘事件
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; }
-            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; }
-            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { keys.up = true; }
-            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { keys.down = true; }
-            updateKeyDisplay();
-        });
-
-        document.addEventListener('keyup', function(e) {
-            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = false; }
-            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = false; }
-            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { keys.up = false; }
-            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { keys.down = false; }
-            updateKeyDisplay();
-        });
-
-        // 按钮事件
-        startBtn.addEventListener('click', startGame);
-        resetBtn.addEventListener('click', function() {
-            resetBtn.textContent = '🔄 重新开始';
-            startGame();
-        });
-
-        // 初始绘制
-        initPlayer();
-        draw();
-
-        console.log('已修复 y 属性错误，道具版赛车游戏已加载！');
+        init();
     </script>
 </body>
 </html>
