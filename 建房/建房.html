@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 造房子 - 门窗升级版</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #87CEEB; }
+        
+        /* UI 布局 */
+        #ui-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .top-bar {
+            display: flex; justify-content: space-between; padding: 15px;
+            pointer-events: auto;
+        }
+
+        .info-panel {
+            background: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15); max-width: 250px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 18px; color: #333; }
+        p { margin: 6px 0; font-size: 13px; color: #555; line-height: 1.4; }
+        .key { background: #eee; border: 1px solid #ccc; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; }
+
+        .action-btn {
+            background: #ff4757; color: white; border: none; padding: 8px 12px;
+            border-radius: 5px; cursor: pointer; font-weight: bold; margin-left: 5px;
+            transition: background 0.2s;
+        }
+        .action-btn:hover { background: #ff6b81; }
+        .save-btn { background: #2ed573; }
+        .save-btn:hover { background: #7bed9f; }
+
+        /* 底部工具栏 */
+        #toolbar-container {
+            pointer-events: auto;
+            display: flex; justify-content: center; padding-bottom: 20px;
+        }
+
+        .toolbar-box {
+            background: rgba(255,255,255,0.95);
+            border-radius: 12px;
+            padding: 10px 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: flex; flex-direction: column; gap: 10px;
+            min-width: 300px;
+        }
+
+        .tabs {
+            display: flex; gap: 5px; border-bottom: 1px solid #eee; padding-bottom: 5px;
+        }
+        .tab-btn {
+            flex: 1; border: none; background: transparent; padding: 8px;
+            cursor: pointer; font-weight: bold; color: #777; border-radius: 4px;
+        }
+        .tab-btn.active { background: #eef; color: #007bff; }
+        
+        .items-grid {
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+            max-height: 120px; overflow-y: auto;
+        }
+
+        .item-btn {
+            width: 50px; height: 50px; border-radius: 8px; border: 2px solid transparent;
+            cursor: pointer; position: relative; overflow: hidden;
+            background: #f0f0f0; display: flex; align-items: center; justify-content: center;
+            font-size: 24px; transition: transform 0.2s, border-color 0.2s;
+        }
+        .item-btn:hover { transform: scale(1.05); }
+        .item-btn.active { border-color: #007bff; background: #e6f2ff; transform: scale(1.1); }
+        
+        .item-label {
+            position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.6);
+            color: white; font-size: 10px; text-align: center; padding: 2px 0;
+        }
+
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 20px; color: #333; background: white; padding: 20px; 
+            border-radius: 10px; display: none; z-index: 999; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">正在加载资源...<br><small>首次加载可能需要几秒</small></div>
+
+    <div id="ui-container">
+        <!-- 顶部信息栏 -->
+        <div class="top-bar">
+            <div class="info-panel">
+                <h1>🏠 3D 造房子 Pro</h1>
+                <p>🖱️ <span class="key">左键</span> 放置 / <span class="key">右键</span> 删除</p>
+                <p>🖱️ <span class="key">拖拽</span> 旋转视角</p>
+                <p>🖱️ <span class="key">滚轮</span> 缩放</p>
+                <p>当前：<b id="current-item-name" style="color:#d9534f">红砖</b></p>
+                <p style="font-size:11px; color:#888;">💡 提示：放置门窗时，请面对墙壁站立，它们会自动朝向你。</p>
+            </div>
+            <div class="info-panel" style="text-align: right;">
+                <button class="action-btn save-btn" onclick="downloadImg()">📷 截图</button>
+                <button class="action-btn" onclick="clearAll()">🗑️ 清空</button>
+            </div>
+        </div>
+
+        <!-- 底部工具栏 -->
+        <div id="toolbar-container">
+            <div class="toolbar-box">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('blocks')">🧱 基础方块</button>
+                    <button class="tab-btn" onclick="switchTab('special')">🚪 门窗屋顶</button>
+                </div>
+                
+                <!-- 基础方块组 -->
+                <div id="group-blocks" class="items-grid"></div>
+                <!-- 特殊组件组 -->
+                <div id="group-special" class="items-grid" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://esm.sh/three@0.160.0';
+        import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+        // --- 配置数据 ---
+        const items = {
+            blocks: [
+                { id: 'brick', name: '红砖', type: 'box', color: 0xd9534f, icon: '🧱' },
+                { id: 'wood', name: '黄木', type: 'box', color: 0xf0ad4e, icon: '🪵' },
+                { id: 'white', name: '白墙', type: 'box', color: 0xffffff, icon: '⬜' },
+                { id: 'grey', name: '灰石', type: 'box', color: 0x999999, icon: '🌫️' },
+                { id: 'grass', name: '草地', type: 'box', color: 0x5cb85c, icon: '🌿' },
+                { id: 'glass_block', name: '玻璃', type: 'box', color: 0x87CEEB, opacity: 0.6, icon: '💎' }
+            ],
+            special: [
+                { id: 'door', name: '木门', type: 'door', color: 0x5c3a21, icon: '🚪' },
+                { id: 'window', name: '窗户', type: 'window', color: 0x87CEEB, icon: '🪟' },
+                { id: 'roof', name: '屋顶', type: 'wedge', color: 0x8B4513, icon: '🔺' },
+                { id: 'roof_white', name: '白顶', type: 'wedge', color: 0xeeeeee, icon: '🔼' },
+                { id: 'chimney', name: '烟囱', type: 'box', color: 0x333333, icon: '🏭' } // 复用box逻辑但颜色不同
+            ]
+        };
+
+        let camera, scene, renderer, controls;
+        let plane, rollOverMesh;
+        let raycaster, pointer;
+        const objects = [];
+        
+        // 当前选中的物品配置
+        let currentItem = items.blocks[0];
+
+        init();
+        animate();
+
+        function init() {
+            document.getElementById('loading').style.display = 'none';
+
+            // 1. 场景设置
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 800, 2000);
+
+            // 2. 相机
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(800, 800, 1200);
+            camera.lookAt(0, 0, 0);
+
+            // 3. 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; // 开启阴影
+            document.body.appendChild(renderer.domElement);
+
+            // 4. 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.minDistance = 200;
+            controls.maxDistance = 2000;
+
+            // 5. 灯光 (增强立体感)
+            const ambientLight = new THREE.AmbientLight(0x606060, 1.5);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+            dirLight.position.set(500, 1000, 750);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // 6. 地面
+            const gridHelper = new THREE.GridHelper(1000, 20, 0x888888, 0xcccccc);
+            scene.add(gridHelper);
+
+            const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+            planeGeo.rotateX(-Math.PI / 2);
+            plane = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ visible: false }));
+            scene.add(plane);
+            objects.push(plane);
+
+            // 7. 预览框 (红色线框)
+            const rollOverGeo = new THREE.BoxGeometry(50, 50, 50);
+            const rollOverMat = new THREE.MeshBasicMaterial({ color: 0xff0000, opacity: 0.5, transparent: true, wireframe: true });
+            rollOverMesh = new THREE.Mesh(rollOverGeo, rollOverMat);
+            scene.add(rollOverMesh);
+
+            // 8. 事件监听
+            raycaster = new THREE.Raycaster();
+            pointer = new THREE.Vector2();
+
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerdown', onPointerDown);
+            document.addEventListener('keydown', onDocumentKeyDown);
+            window.addEventListener('resize', onWindowResize);
+
+            // 9. 初始化 UI
+            renderToolbar();
+            selectItem(items.blocks[0]);
+        }
+
+        // --- UI 逻辑 ---
+        window.switchTab = function(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            document.getElementById('group-blocks').style.display = tabName === 'blocks' ? 'flex' : 'none';
+            document.getElementById('group-special').style.display = tabName === 'special' ? 'flex' : 'none';
+        };
+
+        function renderToolbar() {
+            const createBtn = (item) => {
+                const btn = document.createElement('div');
+                btn.className = 'item-btn';
+                btn.innerHTML = `${item.icon}<div class="item-label">${item.name}</div>`;
+                btn.onclick = () => selectItem(item);
+                btn.dataset.id = item.id;
+                return btn;
+            };
+
+            const blockContainer = document.getElementById('group-blocks');
+            items.blocks.forEach(item => blockContainer.appendChild(createBtn(item)));
+
+            const specialContainer = document.getElementById('group-special');
+            items.special.forEach(item => specialContainer.appendChild(createBtn(item)));
+        }
+
+        function selectItem(item) {
+            currentItem = item;
+            document.querySelectorAll('.item-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.id === item.id);
+            });
+            document.getElementById('current-item-name').innerText = item.name;
+            document.getElementById('current-item-name').style.color = '#' + item.color.toString(16).padStart(6, '0');
+            
+            // 更新预览框大小，如果是楔形（屋顶）
+            if(item.type === 'wedge') {
+                // 预览框保持立方体以便对齐网格，实际放置时会变
+                rollOverMesh.scale.set(1,1,1);
+            } else {
+                rollOverMesh.scale.set(1,1,1);
+            }
+        }
+
+        // --- 核心游戏逻辑 ---
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onPointerMove(event) {
+            // 如果鼠标在UI上，不更新预览
+            if (event.target.closest('.toolbar-box') || event.target.closest('.info-panel')) {
+                rollOverMesh.visible = false;
+                return;
+            }
+
+            pointer.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(objects, false);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                rollOverMesh.visible = true;
+                
+                // 计算网格位置
+                rollOverMesh.position.copy(intersect.point).add(intersect.face.normal);
+                rollOverMesh.position.divideScalar(50).floor().multiplyScalar(50).addScalar(25);
+                
+                // 调整预览框形状以匹配当前选择的物品（视觉反馈）
+                if(currentItem.type === 'wedge') {
+                     // 简单起见，预览还是用盒子，或者可以换成楔形预览
+                     rollOverMesh.geometry = new THREE.BoxGeometry(50, 50, 50);
+                } else {
+                     rollOverMesh.geometry = new THREE.BoxGeometry(50, 50, 50);
+                }
+            } else {
+                rollOverMesh.visible = false;
+            }
+        }
+
+        function onPointerDown(event) {
+            if (event.button !== 0 && event.button !== 2) return;
+            if (event.target.closest('.toolbar-box') || event.target.closest('.info-panel')) return;
+
+            pointer.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(objects, false);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+
+                // 右键删除
+                if (event.button === 2) {
+                    if (intersect.object !== plane) {
+                        scene.remove(intersect.object);
+                        objects.splice(objects.indexOf(intersect.object), 1);
+                    }
+                    return;
+                }
+
+                // 左键放置
+                createVoxel(intersect);
+            }
+        }
+
+        function createVoxel(intersect) {
+            let mesh;
+            const position = new THREE.Vector3().copy(intersect.point).add(intersect.face.normal);
+            position.divideScalar(50).floor().multiplyScalar(50).addScalar(25);
+
+            // 根据类型创建不同的几何体和材质
+            if (currentItem.type === 'box' || currentItem.type === 'chimney') {
+                const geo = new THREE.BoxGeometry(50, 50, 50);
+                const mat = new THREE.MeshLambertMaterial({ 
+                    color: currentItem.color, 
+                    transparent: currentItem.opacity ? true : false,
+                    opacity: currentItem.opacity || 1.0
+                });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+            } 
+            else if (currentItem.type === 'door') {
+                // 门：稍微扁一点，或者标准方块但纹理不同（这里用颜色模拟）
+                const geo = new THREE.BoxGeometry(50, 50, 10); // 薄一点
+                const mat = new THREE.MeshLambertMaterial({ color: currentItem.color });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+                
+                // 添加门框细节（简单的黑色边框模拟）
+                const frameGeo = new THREE.EdgesGeometry(geo);
+                const frameMat = new THREE.LineBasicMaterial({ color: 0x221100, linewidth: 2 });
+                const frame = new THREE.LineSegments(frameGeo, frameMat);
+                mesh.add(frame);
+
+                // 自动旋转：面向相机
+                alignToObject(mesh, intersect);
+            }
+            else if (currentItem.type === 'window') {
+                // 窗户：薄玻璃
+                const geo = new THREE.BoxGeometry(50, 50, 5);
+                const mat = new THREE.MeshPhongMaterial({ 
+                    color: currentItem.color, 
+                    transparent: true, 
+                    opacity: 0.6,
+                    side: THREE.DoubleSide
+                });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+
+                // 窗框
+                const frameGeo = new THREE.EdgesGeometry(geo);
+                const frameMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+                const frame = new THREE.LineSegments(frameGeo, frameMat);
+                mesh.add(frame);
+
+                // 自动旋转
+                alignToObject(mesh, intersect);
+            }
+            else if (currentItem.type === 'wedge') {
+                // 屋顶：三棱柱
+                const shape = new THREE.Shape();
+                shape.moveTo(-25, -25);
+                shape.lineTo(25, -25);
+                shape.lineTo(0, 25);
+                shape.lineTo(-25, -25);
+
+                const extrudeSettings = { depth: 50, bevelEnabled: false };
+                const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                // 旋转几何体使其正确放置
+                geo.rotateX(-Math.PI / 2); 
+                geo.center(); // 居中 pivot
+
+                const mat = new THREE.MeshLambertMaterial({ color: currentItem.color });
+                mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+                
+                // 屋顶也需要根据放置面调整方向，这里简化处理：默认尖端朝上
+                // 如果需要复杂的屋顶朝向，需要更复杂的法线判断，暂时保持简单
+                if(intersect.face.normal.y === 0) {
+                     // 如果放在墙上，旋转90度变成山墙
+                     mesh.rotation.z = Math.PI / 2;
+                     if(intersect.face.normal.x > 0) mesh.rotation.y = Math.PI / 2;
+                     if(intersect.face.normal.x < 0) mesh.rotation.y = -Math.PI / 2;
+                     if(intersect.face.normal.z > 0) mesh.rotation.y = 0;
+                     if(intersect.face.normal.z < 0) mesh.rotation.y = Math.PI;
+                }
+            }
+
+            if(mesh) {
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+                objects.push(mesh);
+            }
+        }
+
+        // 辅助函数：让物体面向相机（或基于法线旋转）
+        function alignToObject(mesh, intersect) {
+            // 获取法线方向
+            const normal = intersect.face.normal.clone();
+            
+            // 默认向上
+            mesh.lookAt(mesh.position.clone().add(normal));
+            
+            // 对于门窗，我们希望它们贴在墙上，并且正面朝外
+            // ThreeJS的lookAt会让Z轴指向目标。
+            // 我们的门/窗模型默认是 facing Z+ (假设)
+            // 如果法线是 (0,1,0) 地面，lookAt会让他站起来？不，地面通常不放门窗。
+            // 如果法线是 (0,0,1) (前面)，lookAt(0,0,1) -> Z轴指向外。正确。
+            
+            // 修正：lookAt 会让物体的 +Z 轴指向目标点。
+            // 我们的门模型构建时，厚度在Z轴。我们希望薄的面朝向法线方向？
+            // 不，我们希望门的“脸”朝向法线方向。
+            // 上面创建的 BoxGeometry(50, 50, 10)，默认脸朝向 Z。
+            // 所以 lookAt(position + normal) 是正确的。
+        }
+
+        function onDocumentKeyDown(event) {
+            if (event.keyCode === 82) { // R
+                camera.position.set(800, 800, 1200);
+                camera.lookAt(0,0,0);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 全局导出
+        window.clearAll = function() {
+            for (let i = objects.length - 1; i >= 0; i--) {
+                if (objects[i] !== plane) {
+                    scene.remove(objects[i]);
+                    objects.splice(i, 1);
+                }
+            }
+        };
+
+        window.downloadImg = function() {
+            renderer.render(scene, camera);
+            const link = document.createElement('a');
+            link.download = 'my-house-pro.png';
+            link.href = renderer.domElement.toDataURL('image/png');
+            link.click();
+        };
+    </script>
+</body>
+</html>

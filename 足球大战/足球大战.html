@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 网页足球大战</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: 'Segoe UI', sans-serif; }
+        
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #scoreboard {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+        }
+
+        .score-box {
+            background: rgba(0,0,0,0.5);
+            padding: 10px 30px;
+            border-radius: 30px;
+            margin: 0 20px;
+            border: 2px solid rgba(255,255,255,0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        #blue-score { color: #3498db; }
+        #red-score { color: #e74c3c; }
+
+        #start-screen, #goal-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            pointer-events: auto;
+            backdrop-filter: blur(8px);
+        }
+
+        #goal-screen { display: none; background: rgba(0,0,0,0.4); }
+
+        h1 { color: #fff; font-size: 48px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 3px; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+        h2 { color: #f1c40f; font-size: 60px; margin: 0; text-shadow: 0 0 30px #f1c40f; animation: pulse 0.5s infinite alternate; }
+
+        p { color: #ccc; font-size: 18px; max-width: 600px; text-align: center; line-height: 1.6; margin-bottom: 30px; }
+
+        button {
+            padding: 15px 50px;
+            font-size: 24px;
+            background: linear-gradient(45deg, #2ecc71, #27ae60);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(46, 204, 113, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        button:hover { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(46, 204, 113, 0.6); }
+        button:active { transform: translateY(1px); }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        .key {
+            display: inline-block;
+            background: #eee;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin: 0 2px;
+            box-shadow: 0 2px 0 #ccc;
+        }
+
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.1); } }
+        
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            z-index: 100;
+        }
+    </style>
+    <!-- 引入 Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="loading">正在加载 3D 引擎...</div>
+
+    <div id="ui-container">
+        <div id="scoreboard">
+            <div class="score-box">蓝队 <span id="blue-score">0</span></div>
+            <div class="score-box">红队 <span id="red-score">0</span></div>
+        </div>
+        <div class="controls">
+            控制：<span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 或 <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span> 移动球员
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>3D 冠军杯</h1>
+        <p>控制<strong>蓝色队长</strong>，与队友配合攻破红色球门。<br>体验真实的 3D 物理碰撞和动态光影。</p>
+        <button onclick="startGame()">开始比赛</button>
+    </div>
+
+    <div id="goal-screen">
+        <h2 id="goal-text">进球!!!</h2>
+    </div>
+
+<script>
+    // --- 全局变量 ---
+    let scene, camera, renderer;
+    let ball, field, goalLeft, goalRight;
+    let players = [];
+    let isRunning = false;
+    let scoreBlue = 0;
+    let scoreRed = 0;
+    
+    // 游戏配置
+    const FIELD_WIDTH = 60;
+    const FIELD_LENGTH = 90;
+    const GOAL_WIDTH = 12;
+    const PLAYER_SPEED = 0.15;
+    const AI_SPEED = 0.12;
+    const BALL_FRICTION = 0.985;
+    
+    // 输入状态
+    const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+    // 实体数据
+    let ballData = { vx: 0, vy: 0, vz: 0, mesh: null };
+    let playerData = []; // 存储逻辑数据 { mesh, team, role, vx, vy, startX, startZ, isCaptain }
+
+    // 初始化
+    function init() {
+        document.getElementById('loading').style.display = 'none';
+
+        // 1. 创建场景
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // 天空蓝
+        scene.fog = new THREE.Fog(0x87CEEB, 40, 100);
+
+        // 2. 摄像机
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 45);
+        camera.lookAt(0, 0, 0);
+
+        // 3. 渲染器
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // 4. 灯光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 80, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -60;
+        dirLight.shadow.camera.right = 60;
+        dirLight.shadow.camera.top = 60;
+        dirLight.shadow.camera.bottom = -60;
+        scene.add(dirLight);
+
+        // 5. 创建场地
+        createField();
+        createGoals();
+        createBall();
+        
+        // 6. 监听事件
+        window.addEventListener('resize', onWindowResize, false);
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // 初始渲染循环（等待开始）
+        animate();
+    }
+
+    function createField() {
+        // 草地
+        const geometry = new THREE.PlaneGeometry(FIELD_LENGTH, FIELD_WIDTH);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0x4CAF50,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        field = new THREE.Mesh(geometry, material);
+        field.rotation.x = -Math.PI / 2;
+        field.receiveShadow = true;
+        scene.add(field);
+
+        // 草地线条 (简单模拟)
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.6, transparent: true });
+        
+        // 中线
+        const midLineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0.1, -FIELD_WIDTH/2),
+            new THREE.Vector3(0, 0.1, FIELD_WIDTH/2)
+        ]);
+        scene.add(new THREE.Line(midLineGeo, lineMat));
+
+        // 中圈
+        const circleGeo = new THREE.RingGeometry(9, 9.5, 32);
+        const circleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, opacity: 0.6, transparent: true });
+        const circle = new THREE.Mesh(circleGeo, circleMat);
+        circle.rotation.x = -Math.PI / 2;
+        circle.position.y = 0.1;
+        scene.add(circle);
+    }
+
+    function createGoals() {
+        const goalMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        const netMat = new THREE.MeshBasicMaterial({ color: 0xdddddd, wireframe: true, opacity: 0.3, transparent: true, side: THREE.DoubleSide });
+
+        function buildGoal(xPos, rotationY) {
+            const group = new THREE.Group();
+            
+            // 门柱
+            const postGeo = new THREE.CylinderGeometry(0.5, 0.5, 4, 16);
+            const crossbarGeo = new THREE.CylinderGeometry(0.5, 0.5, GOAL_WIDTH, 16);
+            
+            const leftPost = new THREE.Mesh(postGeo, goalMat);
+            leftPost.position.set(-GOAL_WIDTH/2, 2, 0);
+            leftPost.castShadow = true;
+            
+            const rightPost = new THREE.Mesh(postGeo, goalMat);
+            rightPost.position.set(GOAL_WIDTH/2, 2, 0);
+            rightPost.castShadow = true;
+
+            const crossbar = new THREE.Mesh(crossbarGeo, goalMat);
+            crossbar.rotation.z = Math.PI / 2;
+            crossbar.position.set(0, 4, 0);
+            crossbar.castShadow = true;
+
+            // 球网 (简化盒子)
+            const netGeo = new THREE.BoxGeometry(GOAL_WIDTH, 4, 2);
+            const net = new THREE.Mesh(netGeo, netMat);
+            net.position.set(0, 2, -1); // 向后延伸
+            
+            group.add(leftPost, rightPost, crossbar, net);
+            group.position.set(xPos, 0, 0);
+            group.rotation.y = rotationY;
+            
+            // 添加碰撞区域标记 (不可见，仅用于逻辑参考，这里不需要mesh)
+            return group;
+        }
+
+        goalLeft = buildGoal(-FIELD_LENGTH/2, Math.PI/2);
+        goalRight = buildGoal(FIELD_LENGTH/2, -Math.PI/2);
+        scene.add(goalLeft);
+        scene.add(goalRight);
+    }
+
+    function createBall() {
+        const geometry = new THREE.SphereGeometry(0.8, 32, 32);
+        // 创建足球纹理效果 (简单程序化)
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0,0,128,128);
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(64, 64, 30, 0, Math.PI*2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(64, 34); ctx.lineTo(64, 94);
+        ctx.moveTo(34, 64); ctx.lineTo(94, 64);
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 });
+        
+        ball = new THREE.Mesh(geometry, material);
+        ball.castShadow = true;
+        ball.position.y = 0.8;
+        scene.add(ball);
+        ballData.mesh = ball;
+    }
+
+    function createPlayerMesh(team, isCaptain) {
+        const group = new THREE.Group();
+        const color = team === 'blue' ? 0x3498db : 0xe74c3c;
+        const skinColor = 0xffdbac;
+        const shortColor = 0xffffff;
+
+        // 身体
+        const bodyGeo = new THREE.BoxGeometry(1.2, 1.8, 0.8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: color });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 2.4;
+        body.castShadow = true;
+        group.add(body);
+
+        // 头部
+        const headGeo = new THREE.SphereGeometry(0.7, 16, 16);
+        const headMat = new THREE.MeshStandardMaterial({ color: skinColor });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 3.8;
+        head.castShadow = true;
+        group.add(head);
+
+        // 腿 (左)
+        const legGeo = new THREE.BoxGeometry(0.4, 1.5, 0.4);
+        const legMat = new THREE.MeshStandardMaterial({ color: shortColor });
+        const leftLeg = new THREE.Mesh(legGeo, legMat);
+        leftLeg.position.set(-0.3, 0.75, 0);
+        leftLeg.castShadow = true;
+        group.add(leftLeg);
+
+        // 腿 (右)
+        const rightLeg = new THREE.Mesh(legGeo, legMat);
+        rightLeg.position.set(0.3, 0.75, 0);
+        rightLeg.castShadow = true;
+        group.add(rightLeg);
+
+        // 队长袖标
+        if (isCaptain) {
+            const bandGeo = new THREE.BoxGeometry(0.2, 0.2, 0.85);
+            const bandMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
+            const band = new THREE.Mesh(bandGeo, bandMat);
+            band.position.set(0.6, 2.8, 0);
+            group.add(band);
+        }
+
+        // 存储引用以便动画
+        group.userData = { leftLeg, rightLeg, body };
+        return group;
+    }
+
+    function initTeams() {
+        // 清除旧球员
+        players.forEach(p => scene.remove(p.mesh));
+        players = [];
+        playerData = [];
+
+        const positions = [
+            { x: -30, z: 0, role: 'captain' },   // 玩家
+            { x: -15, z: -15, role: 'forward' },
+            { x: -15, z: 15, role: 'defender' },
+            { x: 30, z: 0, role: 'captain' },    // AI 队长
+            { x: 15, z: -15, role: 'forward' },
+            { x: 15, z: 15, role: 'defender' }
+        ];
+
+        positions.forEach((pos, index) => {
+            const team = index < 3 ? 'blue' : 'red';
+            const isCaptain = pos.role === 'captain';
+            const mesh = createPlayerMesh(team, isCaptain);
+            
+            mesh.position.set(pos.x, 0, pos.z);
+            scene.add(mesh);
+
+            const pData = {
+                mesh: mesh,
+                team: team,
+                role: pos.role,
+                vx: 0, vz: 0,
+                startX: pos.x,
+                startZ: pos.z,
+                isCaptain: isCaptain,
+                walkCycle: 0
+            };
+            
+            players.push(mesh);
+            playerData.push(pData);
+        });
+    }
+
+    function resetGame() {
+        // 重置球
+        ballData.vx = 0; ballData.vz = 0;
+        ball.position.set(0, 0.8, 0);
+        ball.rotation.set(0,0,0);
+
+        // 重置球员
+        playerData.forEach(p => {
+            p.mesh.position.set(p.startX, 0, p.startZ);
+            p.mesh.rotation.y = p.team === 'blue' ? 0 : Math.PI;
+            p.vx = 0; p.vz = 0;
+            p.walkCycle = 0;
+            // 重置腿部动画
+            p.mesh.userData.leftLeg.rotation.x = 0;
+            p.mesh.userData.rightLeg.rotation.x = 0;
+        });
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        scoreBlue = 0;
+        scoreRed = 0;
+        updateScoreBoard();
+        initTeams();
+        resetGame();
+        isRunning = true;
+    }
+
+    function updateScoreBoard() {
+        document.getElementById('blue-score').innerText = scoreBlue;
+        document.getElementById('red-score').innerText = scoreRed;
+    }
+
+    function handleGoal(scoringTeam) {
+        isRunning = false;
+        playSound('goal');
+        
+        if (scoringTeam === 'blue') scoreBlue++;
+        else scoreRed++;
+        
+        updateScoreBoard();
+
+        const screen = document.getElementById('goal-screen');
+        const text = document.getElementById('goal-text');
+        text.innerText = scoringTeam === 'blue' ? "蓝队得分!" : "红队得分!";
+        text.style.color = scoringTeam === 'blue' ? "#3498db" : "#e74c3c";
+        text.style.textShadow = `0 0 30px ${text.style.color}`;
+        screen.style.display = 'flex';
+
+        setTimeout(() => {
+            screen.style.display = 'none';
+            resetGame();
+            isRunning = true;
+        }, 2000);
+    }
+
+    // --- 核心逻辑更新 ---
+
+    function updatePhysics() {
+        if (!isRunning) return;
+
+        // 1. 玩家控制 (蓝色队长是第一个)
+        const player = playerData[0];
+        let dx = 0, dz = 0;
+        if (keys.w || keys.ArrowUp) dz = -1;
+        if (keys.s || keys.ArrowDown) dz = 1;
+        if (keys.a || keys.ArrowLeft) dx = -1;
+        if (keys.d || keys.ArrowRight) dx = 1;
+
+        if (dx !== 0 || dz !== 0) {
+            // 归一化
+            const len = Math.sqrt(dx*dx + dz*dz);
+            dx /= len; dz /= len;
+            
+            player.vx += dx * 0.02;
+            player.vz += dz * 0.02;
+            
+            // 旋转朝向
+            const targetRot = Math.atan2(dx, dz);
+            // 平滑旋转
+            let rotDiff = targetRot - player.mesh.rotation.y;
+            while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+            while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+            player.mesh.rotation.y += rotDiff * 0.1;
+
+            player.walkCycle += 0.3;
+        } else {
+            player.walkCycle = 0;
+        }
+
+        // 2. AI 控制
+        for (let i = 1; i < playerData.length; i++) {
+            const p = playerData[i];
+            const distToBall = Math.sqrt(Math.pow(ball.position.x - p.mesh.position.x, 2) + Math.pow(ball.position.z - p.mesh.position.z, 2));
+            
+            let targetX = p.startX;
+            let targetZ = p.startZ;
+
+            // 简单策略：如果球近，或者球在进攻方向，就追球
+            const isAttacking = (p.team === 'blue' && ball.position.x > p.mesh.position.x) || 
+                                (p.team === 'red' && ball.position.x < p.mesh.position.x);
+            
+            if (distToBall < 20 || isAttacking) {
+                targetX = ball.position.x;
+                targetZ = ball.position.z;
+                // 稍微随机偏移避免重叠
+                if (!p.isCaptain) {
+                    targetZ += (p.startZ - (p.team==='blue'?-20:20)) * 0.2; 
+                }
+            }
+
+            const pdx = targetX - p.mesh.position.x;
+            const pdz = targetZ - p.mesh.position.z;
+            const dist = Math.sqrt(pdx*pdx + pdz*pdz);
+
+            if (dist > 1) {
+                const moveX = (pdx / dist) * AI_SPEED * 0.8;
+                const moveZ = (pdz / dist) * AI_SPEED * 0.8;
+                
+                p.vx += moveX * 0.1;
+                p.vz += moveZ * 0.1;
+
+                const targetRot = Math.atan2(moveX, moveZ);
+                let rotDiff = targetRot - p.mesh.rotation.y;
+                while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+                while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+                p.mesh.rotation.y += rotDiff * 0.1;
+                
+                p.walkCycle += 0.25;
+            } else {
+                p.walkCycle = 0;
+            }
+        }
+
+        // 3. 应用球员移动和摩擦
+        playerData.forEach(p => {
+            p.vx *= 0.92;
+            p.vz *= 0.92;
+            
+            // 限速
+            const speed = Math.sqrt(p.vx*p.vx + p.vz*p.vz);
+            const maxSpd = p.isCaptain ? PLAYER_SPEED : AI_SPEED;
+            if (speed > maxSpd) {
+                p.vx = (p.vx / speed) * maxSpd;
+                p.vz = (p.vz / speed) * maxSpd;
+            }
+
+            p.mesh.position.x += p.vx;
+            p.mesh.position.z += p.vz;
+
+            // 边界限制
+            p.mesh.position.x = Math.max(-FIELD_LENGTH/2 + 2, Math.min(FIELD_LENGTH/2 - 2, p.mesh.position.x));
+            p.mesh.position.z = Math.max(-FIELD_WIDTH/2 + 2, Math.min(FIELD_WIDTH/2 - 2, p.mesh.position.z));
+
+            // 腿部动画
+            const legAngle = Math.sin(p.walkCycle) * 0.8;
+            p.mesh.userData.leftLeg.rotation.x = legAngle;
+            p.mesh.userData.rightLeg.rotation.x = -legAngle;
+
+            // 球员与球碰撞
+            const dx = ball.position.x - p.mesh.position.x;
+            const dz = ball.position.z - p.mesh.position.z;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            const minDist = 1.5; // 碰撞半径
+
+            if (dist < minDist) {
+                const angle = Math.atan2(dz, dx);
+                const force = 0.4 + speed * 0.5; // 踢球力度
+                
+                ballData.vx = Math.cos(angle) * force;
+                ballData.vz = Math.sin(angle) * force;
+                
+                // 防止粘连
+                const overlap = minDist - dist;
+                ball.position.x += Math.cos(angle) * overlap;
+                ball.position.z += Math.sin(angle) * overlap;
+                
+                playSound('kick');
+            }
+        });
+
+        // 4. 球的物理
+        ball.position.x += ballData.vx;
+        ball.position.z += ballData.vz;
+        ballData.vx *= BALL_FRICTION;
+        ballData.vz *= BALL_FRICTION;
+        
+        // 球滚动旋转
+        ball.rotation.x += ballData.vz * 0.2;
+        ball.rotation.z -= ballData.vx * 0.2;
+
+        // 球边界
+        if (ball.position.z < -FIELD_WIDTH/2 + 0.8 || ball.position.z > FIELD_WIDTH/2 - 0.8) {
+            ballData.vz *= -0.8;
+            ball.position.z = Math.sign(ball.position.z) * (FIELD_WIDTH/2 - 0.8);
+        }
+
+        // 进球检测
+        if (ball.position.x < -FIELD_LENGTH/2) {
+            if (Math.abs(ball.position.z) < GOAL_WIDTH/2) {
+                handleGoal('red'); // 进左边，红队得分
+            } else {
+                ballData.vx *= -0.8;
+                ball.position.x = -FIELD_LENGTH/2 + 0.8;
+            }
+        } else if (ball.position.x > FIELD_LENGTH/2) {
+            if (Math.abs(ball.position.z) < GOAL_WIDTH/2) {
+                handleGoal('blue'); // 进右边，蓝队得分
+            } else {
+                ballData.vx *= -0.8;
+                ball.position.x = FIELD_LENGTH/2 - 0.8;
+            }
+        }
+    }
+
+    function updateCamera() {
+        // 摄像机平滑跟随球
+        const targetX = ball.position.x * 0.6; // 稍微缩小移动范围
+        const targetZ = ball.position.z + 35;  // 保持在球后方
+        
+        camera.position.x += (targetX - camera.position.x) * 0.05;
+        camera.position.z += (targetZ - camera.position.z) * 0.05;
+        camera.lookAt(ball.position.x, 0, ball.position.z);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        updatePhysics();
+        updateCamera();
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // --- 音效系统 (Web Audio API) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'kick') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, t);
+            osc.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+            gain.gain.setValueAtTime(0.3, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+            osc.start(t);
+            osc.stop(t + 0.1);
+        } else if (type === 'goal') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, t);
+            osc.frequency.linearRampToValueAtTime(800, t + 0.2);
+            osc.frequency.linearRampToValueAtTime(1200, t + 0.4);
+            gain.gain.setValueAtTime(0.1, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.6);
+            osc.start(t);
+            osc.stop(t + 0.6);
+        }
+    }
+
+    // 启动
+    init();
+
+</script>
+</body>
+</html>

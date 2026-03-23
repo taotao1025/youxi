@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 篮球投篮 - 带人物</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Arial', sans-serif; }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            background: rgba(0,0,0,0.5);
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="score-board">得分：<span id="score">0</span></div>
+    <div id="instructions">拖动屏幕旋转视角 | 点击屏幕投篮</div>
+    <div id="loading">正在加载 3D 引擎...</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as CANNON from 'cannon-es';
+
+        // --- 全局变量 ---
+        let scene, camera, renderer, controls;
+        let world; // 物理世界
+        let lastTime;
+        let score = 0;
+        
+        // 游戏对象
+        let ballMesh, ballBody;
+        let playerGroup, playerParts = {};
+        let hoopMeshes = [];
+        let hoopSensorBody; // 用于检测进球的不可见传感器
+        
+        // 状态
+        let isBallFlying = false;
+        let canShoot = true;
+        let ballStartPos = new THREE.Vector3(0, 1.5, 4); // 玩家手中的初始位置
+
+        // 配置
+        const CONFIG = {
+            gravity: -9.82,
+            ballRadius: 0.24,
+            ballMass: 0.6,
+            shootForce: 12,
+            shootUpForce: 6
+        };
+
+        init();
+        animate();
+
+        function init() {
+            // 1. 初始化 Three.js 场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 3, 8);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // 灯光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -10;
+            dirLight.shadow.camera.right = 10;
+            dirLight.shadow.camera.top = 10;
+            dirLight.shadow.camera.bottom = -10;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.1; // 防止穿地
+            controls.minDistance = 3;
+            controls.maxDistance = 15;
+
+            // 2. 初始化 Cannon.js 物理世界
+            world = new CANNON.World();
+            world.gravity.set(0, CONFIG.gravity, 0);
+            world.broadphase = new CANNON.SAPBroadphase(world);
+            
+            // 物理材质
+            const defaultMaterial = new CANNON.Material('default');
+            const defaultContactMaterial = new CANNON.ContactMaterial(defaultMaterial, defaultMaterial, {
+                friction: 0.3,
+                restitution: 0.7 // 弹性
+            });
+            world.addContactMaterial(defaultContactMaterial);
+
+            // 3. 创建场景物体
+            createFloor(defaultMaterial);
+            createPlayer();
+            createHoop(defaultMaterial);
+            createBall(defaultMaterial);
+
+            // 事件监听
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onShoot);
+            
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function createFloor(material) {
+            // 视觉
+            const geo = new THREE.PlaneGeometry(50, 50);
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0x333333, 
+                roughness: 0.8,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+
+            // 划线 (简易球场)
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0,0,512,512);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(50, 50, 412, 412); // 外框
+            ctx.beginPath();
+            ctx.arc(256, 256, 100, 0, Math.PI*2); // 中圈
+            ctx.stroke();
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const planeMat = new THREE.MeshStandardMaterial({ map: texture });
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), planeMat);
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.y = 0.01; // 防止重叠闪烁
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            // 物理
+            const shape = new CANNON.Box(new CANNON.Vec3(25, 0.1, 25));
+            const body = new CANNON.Body({ mass: 0, material: material });
+            body.addShape(shape);
+            body.position.set(0, -0.1, 0);
+            world.addBody(body);
+        }
+
+        function createPlayer() {
+            playerGroup = new THREE.Group();
+            scene.add(playerGroup);
+
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const shortMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+            // 身体 (简化为胶囊状)
+            const bodyGeo = new THREE.CylinderGeometry(0.3, 0.2, 0.8, 8);
+            const bodyMesh = new THREE.Mesh(bodyGeo, shirtMat);
+            bodyMesh.position.y = 1.2;
+            bodyMesh.castShadow = true;
+            playerGroup.add(bodyMesh);
+            playerParts.torso = bodyMesh;
+
+            // 头
+            const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+            const headMesh = new THREE.Mesh(headGeo, skinMat);
+            headMesh.position.y = 1.75;
+            headMesh.castShadow = true;
+            playerGroup.add(headMesh);
+            playerParts.head = headMesh;
+
+            // 手臂 (持球手)
+            const armGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.6, 8);
+            const armMesh = new THREE.Mesh(armGeo, skinMat);
+            armMesh.position.set(0.35, 1.4, 0.2);
+            armMesh.rotation.z = -0.5;
+            armMesh.rotation.x = -0.5;
+            armMesh.castShadow = true;
+            playerGroup.add(armMesh);
+            playerParts.arm = armMesh;
+
+            // 腿
+            const legGeo = new THREE.CylinderGeometry(0.1, 0.09, 0.8, 8);
+            const legL = new THREE.Mesh(legGeo, shortMat);
+            legL.position.set(-0.15, 0.4, 0);
+            legL.castShadow = true;
+            playerGroup.add(legL);
+            
+            const legR = new THREE.Mesh(legGeo, shortMat);
+            legR.position.set(0.15, 0.4, 0);
+            legR.castShadow = true;
+            playerGroup.add(legR);
+
+            playerGroup.position.set(0, 0, 4);
+        }
+
+        function createHoop(material) {
+            const hoopX = 0;
+            const hoopY = 3.05; // 标准高度
+            const hoopZ = -6;
+
+            // 柱子
+            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4, 16);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(hoopX, 2, hoopZ - 1);
+            pole.castShadow = true;
+            scene.add(pole);
+
+            // 篮板
+            const boardGeo = new THREE.BoxGeometry(1.8, 1.2, 0.1);
+            const boardMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+            const board = new THREE.Mesh(boardGeo, boardMat);
+            board.position.set(hoopX, hoopY + 0.6, hoopZ - 0.5);
+            board.castShadow = true;
+            scene.add(board);
+            
+            // 篮板边框 (修复：使用 EdgesGeometry)
+            const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.4, 1.0, 0.1)); // 稍微小一点，看起来更像边框
+            const frame = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 }));
+            frame.position.set(hoopX, hoopY + 0.6, hoopZ - 0.5);
+            scene.add(frame);
+
+            // 篮筐 (圆环)
+            const rimGeo = new THREE.TorusGeometry(0.23, 0.02, 16, 32);
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500 });
+            const rim = new THREE.Mesh(rimGeo, rimMat);
+            rim.rotation.x = Math.PI / 2;
+            rim.position.set(hoopX, hoopY, hoopZ);
+            rim.castShadow = true;
+            scene.add(rim);
+            hoopMeshes.push(rim);
+
+            // 篮网 (简化为圆锥线框)
+            const netGeo = new THREE.CylinderGeometry(0.23, 0.15, 0.4, 16, 1, true);
+            const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
+            const net = new THREE.Mesh(netGeo, netMat);
+            net.position.set(hoopX, hoopY - 0.2, hoopZ);
+            scene.add(net);
+
+            // 物理：篮板
+            const boardShape = new CANNON.Box(new CANNON.Vec3(0.9, 0.6, 0.05));
+            const boardBody = new CANNON.Body({ mass: 0, material: material });
+            boardBody.addShape(boardShape);
+            boardBody.position.set(hoopX, hoopY + 0.6, hoopZ - 0.5);
+            world.addBody(boardBody);
+
+            // 物理：篮筐边缘 (简化为一个厚圆环碰撞体，或者几个盒子围成)
+            const rimRadius = 0.23;
+            const segments = 12;
+            for(let i=0; i<segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x = Math.cos(angle) * rimRadius;
+                const z = Math.sin(angle) * rimRadius;
+                const shape = new CANNON.Sphere(0.03); // 小珠子组成篮筐
+                const body = new CANNON.Body({ mass: 0, material: material });
+                body.addShape(shape);
+                body.position.set(hoopX + x, hoopY, hoopZ + z);
+                world.addBody(body);
+            }
+
+            // 进球传感器 (不可见)
+            const sensorShape = new CANNON.Cylinder(0.2, 0.2, 0.1, 8);
+            // Cannon 的 Cylinder 是沿 Z 轴的，需要旋转
+            const q = new CANNON.Quaternion();
+            q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+            
+            hoopSensorBody = new CANNON.Body({ mass: 0, isTrigger: true });
+            hoopSensorBody.addShape(sensorShape, new CANNON.Vec3(0,0,0), q);
+            hoopSensorBody.position.set(hoopX, hoopY - 0.1, hoopZ);
+            hoopSensorBody.addEventListener('collide', (e) => {
+                if (e.body === ballBody && !isBallFlying) return; // 防止刚发射就触发
+                if (ballBody.velocity.y > 0) return; // 必须是从上往下落
+                handleScore();
+            });
+            world.addBody(hoopSensorBody);
+        }
+
+        function createBall(material) {
+            // 视觉
+            const geo = new THREE.SphereGeometry(CONFIG.ballRadius, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0xff8c00, 
+                roughness: 0.4,
+                map: createBasketballTexture() // 程序化纹理
+            });
+            ballMesh = new THREE.Mesh(geo, mat);
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            // 物理
+            const shape = new CANNON.Sphere(CONFIG.ballRadius);
+            ballBody = new CANNON.Body({ mass: CONFIG.ballMass, material: material });
+            ballBody.addShape(shape);
+            ballBody.linearDamping = 0.1;
+            ballBody.angularDamping = 0.1;
+            resetBallPosition();
+            world.addBody(ballBody);
+        }
+
+        // 创建一个简单的篮球纹理
+        function createBasketballTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ff8c00';
+            ctx.fillRect(0,0,256,128);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 64); ctx.lineTo(256, 64); // 横线
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(128, 0); ctx.lineTo(128, 128); // 竖线
+            ctx.stroke();
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
+
+        function resetBallPosition() {
+            ballBody.position.set(ballStartPos.x, ballStartPos.y, ballStartPos.z);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            ballBody.quaternion.set(0, 0, 0, 1);
+            
+            // 将球附着在玩家手上
+            ballMesh.visible = true;
+            isBallFlying = false;
+            canShoot = true;
+            
+            // 简单的动画复位
+            playerParts.arm.rotation.x = -0.5;
+            playerParts.arm.rotation.z = -0.5;
+            playerParts.arm.position.set(0.35, 1.4, 0.2);
+        }
+
+        function onShoot(e) {
+            if (!canShoot || isBallFlying) return;
+            
+            // 防止点击 UI 触发
+            if (e.target.closest('#score-board')) return;
+
+            canShoot = false;
+            isBallFlying = true;
+
+            // 1. 播放投篮动画
+            animateShoot();
+
+            // 2. 计算投掷方向
+            // 获取相机朝向
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            
+            // 稍微向上修正，模拟抛物线
+            direction.y += 0.3; 
+            direction.normalize();
+
+            // 施加力
+            const force = CONFIG.shootForce;
+            ballBody.velocity.set(
+                direction.x * force,
+                direction.y * force + CONFIG.shootUpForce,
+                direction.z * force
+            );
+            
+            // 添加旋转
+            ballBody.angularVelocity.set(5, 0, 0);
+        }
+
+        function animateShoot() {
+            // 简单的关键帧动画逻辑
+            const startArmRotX = playerParts.arm.rotation.x;
+            const startArmPosZ = playerParts.arm.position.z;
+            
+            let progress = 0;
+            const duration = 0.3; // 秒
+
+            function step(timestamp) {
+                if (!lastTime) lastTime = timestamp;
+                const dt = (timestamp - lastTime) / 1000;
+                lastTime = timestamp;
+
+                if (progress < duration) {
+                    progress += dt;
+                    const t = Math.min(progress / duration, 1);
+                    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // 简易缓动
+
+                    // 手臂向上推
+                    playerParts.arm.rotation.x = THREE.MathUtils.lerp(-0.5, -1.5, ease);
+                    playerParts.arm.position.z = THREE.MathUtils.lerp(0.2, 0.6, ease);
+                    
+                    // 身体微跳
+                    playerGroup.position.y = Math.sin(t * Math.PI) * 0.2;
+
+                    requestAnimationFrame(step);
+                } else {
+                    // 动画结束，恢复站姿
+                    playerParts.arm.rotation.x = -0.5;
+                    playerParts.arm.position.z = 0.2;
+                    playerGroup.position.y = 0;
+                    lastTime = null;
+                }
+            }
+            requestAnimationFrame(step);
+        }
+
+        function handleScore() {
+            if (hoopSensorBody.userData.scored) return;
+            hoopSensorBody.userData.scored = true;
+
+            score++;
+            document.getElementById('score').innerText = score;
+            
+            // 特效：闪光
+            const originalColor = scene.background.getHex();
+            scene.background.setHex(0xffffaa);
+            setTimeout(() => {
+                scene.background.setHex(originalColor);
+            }, 100);
+
+            // 重置球
+            setTimeout(resetBallPosition, 1500);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now() / 1000;
+            const dt = time - (lastTime || time);
+            lastTime = time;
+
+            // 同步物理和视觉
+            world.step(1/60, dt, 3);
+
+            if (isBallFlying) {
+                ballMesh.position.copy(ballBody.position);
+                ballMesh.quaternion.copy(ballBody.quaternion);
+                
+                // 检查是否掉出世界或停止
+                if (ballBody.position.y < -5 || (Math.abs(ballBody.velocity.y) < 0.1 && Math.abs(ballBody.velocity.x) < 0.1 && ballBody.position.y < 1)) {
+                     if(!hoopSensorBody.userData.scored) {
+                         setTimeout(resetBallPosition, 1000);
+                     }
+                }
+            } else {
+                // 球在手中时，跟随手的位置
+                // 简单计算手的世界坐标
+                const handPos = new THREE.Vector3(0.35, 1.4, 0.4); // 相对玩家中心
+                handPos.applyMatrix4(playerGroup.matrixWorld);
+                ballMesh.position.copy(handPos);
+                ballMesh.rotation.set(0,0,0); // 手中不旋转
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
