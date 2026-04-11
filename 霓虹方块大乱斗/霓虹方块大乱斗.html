@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双人霓虹大乱斗 - 技能版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 { margin: 10px 0; text-shadow: 0 0 10px rgba(255, 255, 255, 0.3); }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        canvas { display: block; border-radius: 8px; }
+
+        /* UI 层 */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .p1-score { color: #00f2ff; text-shadow: 0 0 10px #00f2ff; }
+        .p2-score { color: #ff0055; text-shadow: 0 0 10px #ff0055; }
+        
+        #timer {
+            color: #fff;
+            background: #333;
+            padding: 5px 15px;
+            border-radius: 15px;
+            border: 1px solid #555;
+        }
+
+        .skill-bar-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .skill-bar {
+            width: 45%;
+            height: 8px;
+            background: #222;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .skill-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.2s;
+        }
+
+        /* 屏幕遮罩 */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 10;
+            border-radius: 8px;
+        }
+
+        .hidden { display: none !important; }
+
+        button {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: linear-gradient(45deg, #ff0055, #ff5e00);
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        button:hover { transform: scale(1.05); }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 40px;
+            text-align: center;
+        }
+
+        .key {
+            display: inline-block;
+            background: #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            font-family: monospace;
+            color: #fff;
+            margin: 0 2px;
+        }
+        
+        .skill-desc {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>霓虹大乱斗：技能觉醒</h1>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <!-- 游戏内 UI -->
+        <div id="ui-layer">
+            <div class="top-bar">
+                <div class="p1-score">P1: <span id="score1">0</span></div>
+                <div id="timer">60s</div>
+                <div class="p2-score">P2: <span id="score2">0</span></div>
+            </div>
+            <div class="skill-bar-container">
+                <div style="width: 45%">
+                    技能充能 (空格)
+                    <div class="skill-bar"><div id="skill-fill-1" class="skill-fill" style="background: #00f2ff;"></div></div>
+                </div>
+                <div style="width: 45%; text-align: right;">
+                    技能充能 (Shift)
+                    <div class="skill-bar"><div id="skill-fill-2" class="skill-fill" style="background: #ff0055;"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 开始屏幕 -->
+        <div id="start-screen" class="screen">
+            <h2 style="font-size: 32px; margin-bottom: 10px;">准备好了吗？</h2>
+            <p>收集黄色方块得分，收集紫色胶囊充能技能！</p>
+            
+            <div class="controls">
+                <div>
+                    <div class="p1-score" style="font-size: 20px;">玩家 1 (青色)</div>
+                    <div style="margin: 10px 0;">
+                        <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 移动
+                    </div>
+                    <div class="skill-desc">技能：时间冻结 (定住对手 2秒)</div>
+                </div>
+                <div>
+                    <div class="p2-score" style="font-size: 20px;">玩家 2 (粉色)</div>
+                    <div style="margin: 10px 0;">
+                        <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span> 移动
+                    </div>
+                    <div class="skill-desc">技能：极速冲刺 (无敌加速 2秒)</div>
+                </div>
+            </div>
+            <button onclick="startGame()">开始对战</button>
+        </div>
+
+        <!-- 结束屏幕 -->
+        <div id="game-over-screen" class="screen hidden">
+            <h2 id="winner-text" style="font-size: 30px; margin-bottom: 10px;">时间到!</h2>
+            <div style="font-size: 24px; margin-bottom: 20px;">
+                <span id="final-score1" class="p1-score">0</span> - <span id="final-score2" class="p2-score">0</span>
+            </div>
+            <button onclick="resetGame()">再来一局</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // --- 游戏配置 ---
+        let gameRunning = false;
+        let timeLeft = 60;
+        let timerInterval;
+        let animationId;
+
+        // 玩家属性
+        const baseSize = 30;
+        const baseSpeed = 5;
+
+        const player1 = {
+            x: 100, y: 300, w: baseSize, h: baseSize,
+            color: '#00f2ff', score: 0,
+            skillCharge: 0, maxCharge: 5, // 需要吃5个胶囊满充能
+            isFrozen: false
+        };
+
+        const player2 = {
+            x: 670, y: 300, w: baseSize, h: baseSize,
+            color: '#ff0055', score: 0,
+            skillCharge: 0, maxCharge: 5,
+            isBoosted: false
+        };
+
+        // 物品
+        let items = []; // 存放所有物品（金币或胶囊）
+
+        // 按键
+        const keys = {};
+
+        // --- 核心逻辑 ---
+
+        function createItem() {
+            // 70% 概率生成金币，30% 概率生成技能胶囊
+            const isSkill = Math.random() < 0.3;
+            items.push({
+                x: Math.random() * (canvas.width - 20),
+                y: Math.random() * (canvas.height - 20),
+                w: 20, h: 20,
+                type: isSkill ? 'skill' : 'score',
+                color: isSkill ? '#bd00ff' : '#ffff00' // 紫色是技能，黄色是分数
+            });
+        }
+
+        function update() {
+            // 1. 倒计时逻辑
+            if (timeLeft > 0) {
+                // 只有当没有玩家使用时间冻结技能时，时间才流逝
+                if (!player2.isBoosted) { 
+                     // 这里逻辑稍微简化：P2技能是加速，P1技能是冻结
+                     // 如果P1释放技能，P2被冻结，时间依然在走，但P2不动
+                }
+            } else {
+                endGame();
+                return;
+            }
+
+            // 2. 玩家 1 移动 (WASD)
+            if (!player1.isFrozen) { // 如果被冻结，无法移动
+                if (keys['w'] || keys['W']) player1.y -= baseSpeed;
+                if (keys['s'] || keys['S']) player1.y += baseSpeed;
+                if (keys['a'] || keys['A']) player1.x -= baseSpeed;
+                if (keys['d'] || keys['D']) player1.x += baseSpeed;
+            }
+
+            // 3. 玩家 2 移动 (方向键)
+            let currentSpeed2 = player2.isBoosted ? baseSpeed * 2.5 : baseSpeed; // 技能开启速度翻倍
+            
+            if (keys['ArrowUp']) player2.y -= currentSpeed2;
+            if (keys['ArrowDown']) player2.y += currentSpeed2;
+            if (keys['ArrowLeft']) player2.x -= currentSpeed2;
+            if (keys['ArrowRight']) player2.x += currentSpeed2;
+
+            // 4. 边界检测
+            [player1, player2].forEach(p => {
+                if (p.x < 0) p.x = 0;
+                if (p.y < 0) p.y = 0;
+                if (p.x + p.w > canvas.width) p.x = canvas.width - p.w;
+                if (p.y + p.h > canvas.height) p.y = canvas.height - p.h;
+            });
+
+            // 5. 物品碰撞与生成
+            // 保持场上至少有3个物品
+            if (items.length < 3 && Math.random() < 0.05) {
+                createItem();
+            }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                
+                // P1 吃物品
+                if (rectIntersect(player1.x, player1.y, player1.w, player1.h, item.x, item.y, item.w, item.h)) {
+                    handleItemCollect(player1, item);
+                    items.splice(i, 1);
+                    continue;
+                }
+                // P2 吃物品
+                if (rectIntersect(player2.x, player2.y, player2.w, player2.h, item.x, item.y, item.w, item.h)) {
+                    handleItemCollect(player2, item);
+                    items.splice(i, 1);
+                }
+            }
+
+            // 6. 玩家碰撞 (游戏结束)
+            if (rectIntersect(player1.x, player1.y, player1.w, player1.h, player2.x, player2.y, player2.w, player2.h)) {
+                endGame();
+            }
+        }
+
+        function handleItemCollect(player, item) {
+            if (item.type === 'score') {
+                player.score += 10;
+                // 稍微变大
+                if(player.w < 50) { player.w += 1; player.h += 1; }
+            } else {
+                // 技能充能
+                if (player.skillCharge < player.maxCharge) {
+                    player.skillCharge++;
+                }
+            }
+            updateUI();
+        }
+
+        function useSkill(player, opponent) {
+            if (player.skillCharge >= player.maxCharge) {
+                player.skillCharge = 0; // 消耗充能
+                updateUI();
+
+                if (player === player1) {
+                    // P1 技能：冻结对手
+                    opponent.isFrozen = true;
+                    setTimeout(() => { opponent.isFrozen = false; }, 2000); // 2秒后解冻
+                } else {
+                    // P2 技能：极速冲刺
+                    opponent.isBoosted = true;
+                    setTimeout(() => { opponent.isBoosted = false; }, 2000); // 2秒后恢复
+                }
+            }
+        }
+
+        // --- 技能按键监听 ---
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            // P1 释放技能 (空格)
+            if (e.key === ' ' && gameRunning) {
+                useSkill(player1, player2);
+            }
+            // P2 释放技能 (Shift)
+            if (e.key === 'Shift' && gameRunning) {
+                useSkill(player2, player1);
+            }
+
+            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+            return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+        }
+
+        // --- 绘图 ---
+        function draw() {
+            // 背景
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 网格
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            for(let i=0; i<canvas.width; i+=40) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+            for(let i=0; i<canvas.height; i+=40) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+            }
+
+            // 绘制物品
+            items.forEach(item => {
+                ctx.fillStyle = item.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = item.color;
+                ctx.fillRect(item.x, item.y, item.w, item.h);
+                
+                // 简单的图标区分
+                ctx.fillStyle = '#000';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(item.type === 'score' ? '$' : '⚡', item.x + 10, item.y + 10);
+            });
+
+            // 绘制 P1
+            ctx.fillStyle = player1.isFrozen ? '#555' : player1.color; // 冻结变灰
+            ctx.shadowBlur = player1.isFrozen ? 0 : 20;
+            ctx.shadowColor = player1.color;
+            ctx.fillRect(player1.x, player1.y, player1.w, player1.h);
+
+            // 绘制 P2
+            ctx.fillStyle = player2.isBoosted ? '#ffaaaa' : player2.color; // 加速变亮
+            ctx.shadowBlur = player2.isBoosted ? 30 : 20;
+            ctx.shadowColor = player2.color;
+            ctx.fillRect(player2.x, player2.y, player2.w, player2.h);
+
+            ctx.shadowBlur = 0; // 重置
+        }
+
+        function updateUI() {
+            document.getElementById('score1').innerText = player1.score;
+            document.getElementById('score2').innerText = player2.score;
+            document.getElementById('timer').innerText = timeLeft + 's';
+            
+            // 更新技能条宽度
+            const p1Percent = (player1.skillCharge / player1.maxCharge) * 100;
+            const p2Percent = (player2.skillCharge / player2.maxCharge) * 100;
+            document.getElementById('skill-fill-1').style.width = p1Percent + '%';
+            document.getElementById('skill-fill-2').style.width = p2Percent + '%';
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- 游戏流程控制 ---
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            
+            // 重置数据
+            player1.x = 100; player1.y = 300; player1.w = baseSize; player1.h = baseSize; 
+            player1.score = 0; player1.skillCharge = 0; player1.isFrozen = false;
+            
+            player2.x = 670; player2.y = 300; player2.w = baseSize; player2.h = baseSize; 
+            player2.score = 0; player2.skillCharge = 0; player2.isBoosted = false;
+
+            items = [];
+            timeLeft = 60;
+            updateUI();
+
+            gameRunning = true;
+            
+            // 启动倒计时
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateUI();
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+
+            gameLoop();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            cancelAnimationFrame(animationId);
+
+            let winnerText = "";
+            if (player1.score > player2.score) {
+                winnerText = "玩家 1 (青色) 获胜!";
+            } else if (player2.score > player1.score) {
+                winnerText = "玩家 2 (粉色) 获胜!";
+            } else {
+                winnerText = "平局!";
+            }
+
+            document.getElementById('winner-text').innerHTML = winnerText;
+            document.getElementById('final-score1').innerText = player1.score;
+            document.getElementById('final-score2').innerText = player2.score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+        // 初始绘制
+        draw();
+
+    </script>
+</body>
+</html>

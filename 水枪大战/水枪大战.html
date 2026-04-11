@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>夏日水枪大作战 - 双人版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA);
+            display: block;
+            border-radius: 4px;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 40px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+
+        .health-bar-container {
+            width: 200px;
+            height: 20px;
+            background: #555;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .health-bar {
+            height: 100%;
+            width: 100%;
+            transition: width 0.2s;
+        }
+
+        #p1-health { background: #e74c3c; }
+        #p2-health { background: #3498db; }
+
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 40px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px #000;
+            display: none;
+            text-align: center;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #333;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div id="ui">
+        <div>
+            <div style="color:white; margin-bottom:5px;">玩家 1</div>
+            <div class="health-bar-container"><div id="p1-health" class="health-bar"></div></div>
+        </div>
+        <div style="text-align: right;">
+            <div style="color:white; margin-bottom:5px;">玩家 2</div>
+            <div class="health-bar-container"><div id="p2-health" class="health-bar"></div></div>
+        </div>
+    </div>
+
+    <div id="message">
+        玩家 1 获胜!<br>
+        <span style="font-size: 20px">按空格键重新开始</span>
+    </div>
+    
+    <div id="controls">
+        P1: A/D移动 W跳跃 SPACE射击 | P2: ←/→移动 ↑跳跃 ENTER射击
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const p1HealthBar = document.getElementById('p1-health');
+    const p2HealthBar = document.getElementById('p2-health');
+    const messageBox = document.getElementById('message');
+
+    // 游戏状态
+    let gameRunning = true;
+
+    // 物理常量
+    const GRAVITY = 0.6;
+    const GROUND_Y = 350;
+
+    // 输入状态
+    const keys = {};
+
+    // 玩家类
+    class Player {
+        constructor(x, color, isPlayer1) {
+            this.x = x;
+            this.y = GROUND_Y - 50;
+            this.width = 40;
+            this.height = 60;
+            this.color = color;
+            this.vx = 0;
+            this.vy = 0;
+            this.speed = 5;
+            this.jumpPower = -12;
+            this.isGrounded = true;
+            this.isPlayer1 = isPlayer1;
+            this.facing = isPlayer1 ? 1 : -1; // 1 向右, -1 向左
+            this.health = 100;
+            this.lastShot = 0;
+            this.shootDelay = 30; // 射击冷却
+        }
+
+        update() {
+            // 移动逻辑
+            if (this.isPlayer1) {
+                if (keys['KeyA']) { this.vx = -this.speed; this.facing = -1; }
+                else if (keys['KeyD']) { this.vx = this.speed; this.facing = 1; }
+                else { this.vx = 0; }
+                
+                if (keys['KeyW'] && this.isGrounded) {
+                    this.vy = this.jumpPower;
+                    this.isGrounded = false;
+                }
+            } else {
+                if (keys['ArrowLeft']) { this.vx = -this.speed; this.facing = -1; }
+                else if (keys['ArrowRight']) { this.vx = this.speed; this.facing = 1; }
+                else { this.vx = 0; }
+
+                if (keys['ArrowUp'] && this.isGrounded) {
+                    this.vy = this.jumpPower;
+                    this.isGrounded = false;
+                }
+            }
+
+            // 应用物理
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += GRAVITY;
+
+            // 地面碰撞
+            if (this.y + this.height > GROUND_Y) {
+                this.y = GROUND_Y - this.height;
+                this.vy = 0;
+                this.isGrounded = true;
+            }
+
+            // 边界限制
+            if (this.x < 0) this.x = 0;
+            if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+        }
+
+        draw() {
+            // 绘制身体
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            
+            // 绘制简单的眼睛，表示朝向
+            ctx.fillStyle = 'white';
+            let eyeOffset = this.facing === 1 ? 25 : 5;
+            ctx.fillRect(this.x + eyeOffset, this.y + 10, 10, 10);
+            ctx.fillStyle = 'black';
+            let pupilOffset = this.facing === 1 ? 30 : 5;
+            ctx.fillRect(this.x + pupilOffset, this.y + 12, 4, 4);
+
+            // 绘制水枪
+            ctx.fillStyle = '#333';
+            let gunX = this.facing === 1 ? this.x + 20 : this.x - 20;
+            ctx.fillRect(gunX, this.y + 30, 40, 10);
+        }
+
+        shoot() {
+            if (gameRunning && this.lastShot <= 0) {
+                // 发射子弹
+                let bulletX = this.facing === 1 ? this.x + this.width : this.x;
+                let bulletY = this.y + 35;
+                let bulletVx = this.facing === 1 ? 10 : -10;
+                
+                bullets.push(new Bullet(bulletX, bulletY, bulletVx, this));
+                this.lastShot = this.shootDelay;
+            }
+        }
+
+        updateCooldown() {
+            if (this.lastShot > 0) this.lastShot--;
+        }
+    }
+
+    // 子弹类
+    class Bullet {
+        constructor(x, y, vx, owner) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.radius = 5;
+            this.owner = owner; // 记录是谁发射的
+            this.active = true;
+        }
+
+        update() {
+            this.x += this.vx;
+            // 超出屏幕移除
+            if (this.x < 0 || this.x > canvas.width) this.active = false;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#00BFFF'; // 水蓝色
+            ctx.fill();
+            ctx.strokeStyle = '#0099cc';
+            ctx.stroke();
+        }
+    }
+
+    // 初始化对象
+    let p1 = new Player(100, '#e74c3c', true);
+    let p2 = new Player(660, '#3498db', false);
+    let bullets = [];
+
+    // 碰撞检测 (矩形与圆)
+    function checkCollision(rect, circle) {
+        // 找到矩形上离圆心最近的点
+        let testX = circle.x;
+        let testY = circle.y;
+
+        if (circle.x < rect.x) testX = rect.x;
+        else if (circle.x > rect.x + rect.width) testX = rect.x + rect.width;
+        
+        if (circle.y < rect.y) testY = rect.y;
+        else if (circle.y > rect.y + rect.height) testY = rect.y + rect.height;
+
+        let distX = circle.x - testX;
+        let distY = circle.y - testY;
+        let distance = Math.sqrt((distX * distX) + (distY * distY));
+
+        return distance <= circle.radius;
+    }
+
+    // 重置游戏
+    function resetGame() {
+        p1 = new Player(100, '#e74c3c', true);
+        p2 = new Player(660, '#3498db', false);
+        bullets = [];
+        gameRunning = true;
+        messageBox.style.display = 'none';
+        p1HealthBar.style.width = '100%';
+        p2HealthBar.style.width = '100%';
+    }
+
+    // 游戏主循环
+    function loop() {
+        // 清空画布
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 绘制地面
+        ctx.fillStyle = '#8d6e63';
+        ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+        ctx.fillStyle = '#66bb6a'; // 草地
+        ctx.fillRect(0, GROUND_Y, canvas.width, 10);
+
+        // 更新和绘制玩家
+        p1.update();
+        p1.draw();
+        p1.updateCooldown();
+
+        p2.update();
+        p2.draw();
+        p2.updateCooldown();
+
+        // 更新和绘制子弹
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            let b = bullets[i];
+            b.update();
+            b.draw();
+
+            // 检查子弹击中
+            let hit = false;
+            if (b.owner === p1 && checkCollision(p2, b)) {
+                p2.health -= 5; // 伤害值
+                hit = true;
+            } else if (b.owner === p2 && checkCollision(p1, b)) {
+                p1.health -= 5;
+                hit = true;
+            }
+
+            if (hit) {
+                b.active = false;
+                // 更新血条UI
+                p1HealthBar.style.width = p1.health + '%';
+                p2HealthBar.style.width = p2.health + '%';
+
+                // 检查胜负
+                if (p1.health <= 0 || p2.health <= 0) {
+                    gameRunning = false;
+                    messageBox.innerHTML = (p1.health <= 0 ? "玩家 2 获胜!" : "玩家 1 获胜!") + "<br><span style='font-size: 20px'>按空格键重新开始</span>";
+                    messageBox.style.display = 'block';
+                }
+            }
+
+            if (!b.active) {
+                bullets.splice(i, 1);
+            }
+        }
+
+        // 处理射击输入
+        if (keys['Space']) p1.shoot();
+        if (keys['Enter']) p2.shoot();
+
+        requestAnimationFrame(loop);
+    }
+
+    // 事件监听
+    window.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        // 防止空格键滚动页面
+        if(e.code === 'Space') e.preventDefault();
+        
+        if (!gameRunning && e.code === 'Space') {
+            resetGame();
+        }
+    });
+
+    window.addEventListener('keyup', e => {
+        keys[e.code] = false;
+    });
+
+    // 启动游戏
+    loop();
+
+</script>
+</body>
+</html>
