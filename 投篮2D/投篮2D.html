@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>抛物线篮球挑战</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA);
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #333;
+            pointer-events: none;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #scoreBoard {
+            font-size: 40px;
+            font-weight: bold;
+            color: #ff6600;
+        }
+
+        #instructions {
+            font-size: 14px;
+            color: #555;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>篮球抛物线</h1>
+        <div id="scoreBoard">得分: 0</div>
+        <div id="instructions">点击屏幕投篮 • 点击位置决定力度和角度</div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('scoreBoard');
+
+        // 游戏状态
+        let width, height;
+        let score = 0;
+        
+        // 物理常量
+        const GRAVITY = 0.6;
+        const BOUNCE = 0.7;
+        const FRICTION = 0.98;
+
+        // 篮球对象
+        const ball = {
+            x: 100,
+            y: 0, // 会在 resize 中设置
+            radius: 20,
+            vx: 0,
+            vy: 0,
+            isFlying: false,
+            color: '#ff6600'
+        };
+
+        // 篮筐对象
+        const hoop = {
+            x: 0, // 会在 resize 中设置
+            y: 0,
+            width: 80,
+            rimY: 0,
+            backboardX: 0
+        };
+
+        // 初始化画布大小
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            // 重置球的位置到底部左侧
+            if (!ball.isFlying) {
+                ball.x = width * 0.15;
+                ball.y = height - 150;
+            }
+
+            // 设置篮筐位置 (右侧)
+            hoop.x = width * 0.8;
+            hoop.y = height * 0.4;
+            hoop.rimY = hoop.y + 20; // 篮筐底部
+            hoop.backboardX = hoop.x + hoop.width;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 投篮逻辑
+        canvas.addEventListener('mousedown', (e) => {
+            if (ball.isFlying) return;
+
+            const clickX = e.clientX;
+            const clickY = e.clientY;
+
+            // 计算力度向量 (从球的位置指向点击的位置的反方向，模拟拉弓或者瞄准)
+            // 这里采用简单的逻辑：点击位置决定初速度
+            // 点击点越高，vy 越负（向上）；点击点越右，vx 越大
+            
+            const dx = clickX - ball.x;
+            const dy = clickY - ball.y;
+            
+            // 力度系数
+            const power = 0.15; 
+
+            // 设置初速度
+            // 我们希望往右投，所以 vx 必须是正的
+            // 如果点击在屏幕上方，球飞得高
+            ball.vx = dx * power * 0.8; 
+            ball.vy = dy * power;
+
+            // 限制最小和最大力度，防止球不动或飞出宇宙
+            if (ball.vx < 5) ball.vx = 5;
+            if (ball.vx > 25) ball.vx = 25;
+            if (ball.vy > -5) ball.vy = -10; // 必须向上
+            if (ball.vy < -25) ball.vy = -25;
+
+            ball.isFlying = true;
+        });
+
+        // 绘制篮球
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+
+            // 画篮球纹路
+            ctx.beginPath();
+            ctx.moveTo(ball.x - ball.radius, ball.y);
+            ctx.lineTo(ball.x + ball.radius, ball.y);
+            ctx.moveTo(ball.x, ball.y - ball.radius);
+            ctx.lineTo(ball.x, ball.y + ball.radius);
+            ctx.stroke();
+        }
+
+        // 绘制篮筐
+        function drawHoop() {
+            // 篮板
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(hoop.backboardX, hoop.y - 40, 10, 80);
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(hoop.backboardX, hoop.y - 40, 10, 80);
+
+            // 篮筐（网）
+            ctx.beginPath();
+            ctx.moveTo(hoop.x, hoop.rimY);
+            ctx.lineTo(hoop.backboardX, hoop.rimY); // 篮圈前缘
+            ctx.strokeStyle = '#ff4500';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // 篮网 (简单的梯形线条)
+            ctx.beginPath();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.moveTo(hoop.x, hoop.rimY);
+            ctx.lineTo(hoop.x + 10, hoop.rimY + 40);
+            ctx.lineTo(hoop.backboardX - 10, hoop.rimY + 40);
+            ctx.lineTo(hoop.backboardX, hoop.rimY);
+            ctx.stroke();
+        }
+
+        // 绘制地板
+        function drawFloor() {
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, height - 20, width, 20);
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(0, height - 20, width, 5);
+        }
+
+        // 碰撞检测与物理更新
+        function update() {
+            if (ball.isFlying) {
+                // 应用重力
+                ball.vy += GRAVITY;
+                ball.vx *= FRICTION; // 空气阻力
+
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // 1. 地板碰撞
+                if (ball.y + ball.radius > height - 20) {
+                    ball.y = height - 20 - ball.radius;
+                    ball.vy *= -BOUNCE;
+                    ball.vx *= 0.9; // 地面摩擦力大
+
+                    // 如果速度很慢，停止
+                    if (Math.abs(ball.vy) < GRAVITY * 2 && Math.abs(ball.vx) < 0.5) {
+                        resetBall();
+                    }
+                }
+
+                // 2. 墙壁碰撞
+                if (ball.x + ball.radius > width || ball.x - ball.radius < 0) {
+                    ball.vx *= -BOUNCE;
+                    if (ball.x + ball.radius > width) ball.x = width - ball.radius;
+                    if (ball.x - ball.radius < 0) ball.x = ball.radius;
+                }
+
+                // 3. 篮板碰撞
+                // 简单的矩形碰撞检测
+                if (ball.x + ball.radius > hoop.backboardX && 
+                    ball.x - ball.radius < hoop.backboardX + 10 &&
+                    ball.y + ball.radius > hoop.y - 40 && 
+                    ball.y - ball.radius < hoop.y + 40) {
+                    
+                    ball.vx *= -BOUNCE;
+                    ball.x = hoop.backboardX - ball.radius;
+                }
+
+                // 4. 篮筐碰撞 (进球检测)
+                // 检测是否穿过篮筐上沿
+                // 篮筐范围：hoop.x 到 hoop.backboardX
+                // 进球条件：球心在篮筐水平范围内，且球底部落在 rimY 附近，且正在下落
+                
+                // 简单的进球判定：球穿过篮筐中心线
+                const rimCenter = hoop.x + (hoop.backboardX - hoop.x) / 2;
+                const rimWidth = hoop.backboardX - hoop.x;
+
+                // 如果球在篮筐水平范围内
+                if (ball.x > hoop.x && ball.x < hoop.backboardX) {
+                    // 如果球刚刚穿过篮筐高度（从上往下）
+                    if (ball.y + ball.radius > hoop.rimY && ball.y - ball.radius < hoop.rimY + 20 && ball.vy > 0) {
+                        // 进球！
+                        score++;
+                        scoreEl.innerText = "得分: " + score;
+                        // 给一点视觉反馈，比如变色
+                        ball.color = '#32CD32'; 
+                        setTimeout(() => ball.color = '#ff6600', 500);
+                    }
+                }
+                
+                // 如果球砸到篮筐边缘（简单的点碰撞模拟）
+                // 左边缘
+                if (Math.abs(ball.x - hoop.x) < ball.radius && Math.abs(ball.y - hoop.rimY) < ball.radius) {
+                     ball.vx *= -0.5;
+                     ball.vy *= -0.5;
+                }
+                // 右边缘
+                if (Math.abs(ball.x - hoop.backboardX) < ball.radius && Math.abs(ball.y - hoop.rimY) < ball.radius) {
+                     ball.vx *= -0.5;
+                     ball.vy *= -0.5;
+                }
+
+            }
+        }
+
+        function resetBall() {
+            ball.isFlying = false;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.x = width * 0.15;
+            ball.y = height - 150;
+        }
+
+        // 游戏主循环
+        function loop() {
+            ctx.clearRect(0, 0, width, height);
+            
+            drawFloor();
+            drawHoop();
+            update();
+            drawBall();
+
+            requestAnimationFrame(loop);
+        }
+
+        // 启动游戏
+        loop();
+
+    </script>
+</body>
+</html>

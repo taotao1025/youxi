@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>霓虹躲避 - 闯关小游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+
+        canvas {
+            background-color: #000;
+            border: 2px solid #333;
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 让点击穿透到Canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 40px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px #ff0055;
+        }
+
+        p {
+            font-size: 18px;
+            color: #ccc;
+        }
+
+        button {
+            pointer-events: auto;
+            padding: 10px 25px;
+            font-size: 18px;
+            background: #00ccff;
+            border: none;
+            color: #000;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 20px;
+            transition: transform 0.1s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            background: #fff;
+        }
+
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 16px;
+            color: #fff;
+            text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <div id="hud">关卡: <span id="level-display">1</span></div>
+        
+        <!-- 开始/结束 界面 -->
+        <div id="ui-layer">
+            <div id="start-screen">
+                <h1>霓虹躲避</h1>
+                <p>使用方向键或 WASD 移动</p>
+                <p>躲避 <span style="color:#ff3333">红色方块</span></p>
+                <p>触碰 <span style="color:#33ccff">蓝色区域</span> 进入下一关</p>
+                <button onclick="startGame()">开始游戏</button>
+            </div>
+            <div id="game-over-screen" class="hidden">
+                <h1 style="color: #ff3333">游戏结束</h1>
+                <p>你到达了第 <span id="final-level">0</span> 关</p>
+                <button onclick="resetGame()">重新开始</button>
+            </div>
+            <div id="level-complete-screen" class="hidden">
+                <h1 style="color: #33ccff">关卡完成!</h1>
+                <p>准备进入下一关...</p>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 游戏配置 ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 游戏状态
+    let gameRunning = false;
+    let currentLevel = 1;
+    let animationId;
+
+    // 玩家对象
+    const player = {
+        x: 50,
+        y: 200,
+        size: 20,
+        speed: 5,
+        color: '#00ff00',
+        dx: 0,
+        dy: 0
+    };
+
+    // 关卡目标 (传送门)
+    const goal = {
+        x: 550,
+        y: 350,
+        w: 40,
+        h: 40,
+        color: '#33ccff'
+    };
+
+    // 敌人数组
+    let enemies = [];
+
+    // 按键状态
+    const keys = {
+        w: false, a: false, s: false, d: false,
+        ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false
+    };
+
+    // --- 输入监听 ---
+    window.addEventListener('keydown', (e) => {
+        if(keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
+    });
+
+    // --- 游戏逻辑 ---
+
+    function initLevel(level) {
+        // 重置玩家位置
+        player.x = 30;
+        player.y = 30;
+
+        // 根据关卡生成敌人
+        enemies = [];
+        const enemyCount = 3 + (level * 2); // 关卡越高敌人越多
+        
+        for (let i = 0; i < enemyCount; i++) {
+            enemies.push({
+                x: Math.random() * (canvas.width - 30),
+                y: Math.random() * (canvas.height - 30),
+                w: 20 + Math.random() * 20, // 随机大小
+                h: 20 + Math.random() * 20,
+                vx: (Math.random() - 0.5) * (2 + level * 0.5), // 随机速度X (随关卡变快)
+                vy: (Math.random() - 0.5) * (2 + level * 0.5), // 随机速度Y
+                color: '#ff3333'
+            });
+        }
+
+        // 稍微移动一下传送门位置，增加趣味性
+        goal.x = Math.random() > 0.5 ? canvas.width - 60 : 60;
+        goal.y = Math.random() > 0.5 ? canvas.height - 60 : 60;
+
+        document.getElementById('level-display').innerText = level;
+    }
+
+    function update() {
+        // 1. 移动玩家
+        if (keys.w || keys.ArrowUp) player.y -= player.speed;
+        if (keys.s || keys.ArrowDown) player.y += player.speed;
+        if (keys.a || keys.ArrowLeft) player.x -= player.speed;
+        if (keys.d || keys.ArrowRight) player.x += player.speed;
+
+        // 边界限制
+        if (player.x < 0) player.x = 0;
+        if (player.x + player.size > canvas.width) player.x = canvas.width - player.size;
+        if (player.y < 0) player.y = 0;
+        if (player.y + player.size > canvas.height) player.y = canvas.height - player.size;
+
+        // 2. 移动敌人 & 碰撞检测
+        for (let i = 0; i < enemies.length; i++) {
+            let e = enemies[i];
+            e.x += e.vx;
+            e.y += e.vy;
+
+            // 敌人碰墙反弹
+            if (e.x <= 0 || e.x + e.w >= canvas.width) e.vx *= -1;
+            if (e.y <= 0 || e.y + e.h >= canvas.height) e.vy *= -1;
+
+            // 玩家与敌人碰撞 (简单的矩形碰撞)
+            if (
+                player.x < e.x + e.w &&
+                player.x + player.size > e.x &&
+                player.y < e.y + e.h &&
+                player.y + player.size > e.y
+            ) {
+                gameOver();
+            }
+        }
+
+        // 3. 检查是否到达终点
+        if (
+            player.x < goal.x + goal.w &&
+            player.x + player.size > goal.x &&
+            player.y < goal.y + goal.h &&
+            player.y + player.size > goal.y
+        ) {
+            levelComplete();
+        }
+    }
+
+    function draw() {
+        // 清空画布
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 绘制传送门 (带发光效果)
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = goal.color;
+        ctx.fillStyle = goal.color;
+        ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+        
+        // 绘制玩家
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = player.color;
+        ctx.fillStyle = player.color;
+        ctx.fillRect(player.x, player.y, player.size, player.size);
+
+        // 绘制敌人
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ff0000';
+        ctx.fillStyle = '#ff0000';
+        for (let e of enemies) {
+            ctx.fillRect(e.x, e.y, e.w, e.h);
+        }
+
+        // 重置阴影，避免影响背景
+        ctx.shadowBlur = 0;
+    }
+
+    function gameLoop() {
+        if (!gameRunning) return;
+
+        update();
+        draw();
+        
+        animationId = requestAnimationFrame(gameLoop);
+    }
+
+    // --- 界面控制 ---
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        
+        currentLevel = 1;
+        gameRunning = true;
+        initLevel(currentLevel);
+        gameLoop();
+    }
+
+    function levelComplete() {
+        gameRunning = false;
+        cancelAnimationFrame(animationId);
+        
+        const ui = document.getElementById('level-complete-screen');
+        ui.classList.remove('hidden');
+
+        // 1秒后进入下一关
+        setTimeout(() => {
+            ui.classList.add('hidden');
+            currentLevel++;
+            gameRunning = true;
+            initLevel(currentLevel);
+            gameLoop();
+        }, 1500);
+    }
+
+    function gameOver() {
+        gameRunning = false;
+        cancelAnimationFrame(animationId);
+        
+        document.getElementById('final-level').innerText = currentLevel;
+        document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function resetGame() {
+        startGame();
+    }
+
+    // 初始绘制一次背景
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+</script>
+</body>
+</html>
