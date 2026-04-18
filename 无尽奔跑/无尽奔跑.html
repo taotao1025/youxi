@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>恐龙跑酷游戏</title>
+    <style>
+        /* --- 基础样式 --- */
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f7f7f7;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        /* --- 游戏容器 --- */
+        #game {
+            width: 600px;
+            height: 200px;
+            border-bottom: 2px solid #535353;
+            margin: auto;
+            position: relative;
+            overflow: hidden; /* 隐藏超出边界的元素 */
+            background-color: #fff;
+        }
+
+        /* --- 恐龙样式 --- */
+        #dino {
+            width: 50px;
+            height: 50px;
+            background-color: #ff6b6b; /* 恐龙颜色 */
+            position: absolute;
+            bottom: 0;
+            left: 50px;
+            border-radius: 5px;
+            z-index: 2;
+        }
+
+        /* --- 跳跃动画类 --- */
+        .animate-jump {
+            animation: jump 0.5s linear;
+        }
+
+        @keyframes jump {
+            0% { bottom: 0; }
+            30% { bottom: 100px; }
+            70% { bottom: 100px; }
+            100% { bottom: 0; }
+        }
+
+        /* --- 障碍物 (仙人掌) 样式 --- */
+        #cactus {
+            width: 30px;
+            height: 50px;
+            background-color: #51cf66; /* 仙人掌颜色 */
+            position: absolute;
+            bottom: 0;
+            left: 600px; /* 初始位置在最右侧 */
+            border-radius: 3px;
+        }
+
+        /* --- 障碍物移动动画 --- */
+        .cactus-move {
+            animation: block-move 1.5s infinite linear;
+        }
+
+        @keyframes block-move {
+            0% { left: 600px; }
+            100% { left: -40px; }
+        }
+
+        /* --- 分数显示 --- */
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 20px;
+            color: #535353;
+        }
+
+        /* --- 游戏结束/开始 提示 --- */
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #333;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game">
+        <div id="score">得分: 0</div>
+        <div id="dino"></div>
+        <div id="cactus"></div>
+        <div id="message">
+            <h2>准备开始?</h2>
+            <p>按空格键跳跃</p>
+            <button onclick="startGame()">开始游戏</button>
+        </div>
+    </div>
+
+    <script>
+        const dino = document.getElementById("dino");
+        const cactus = document.getElementById("cactus");
+        const scoreElement = document.getElementById("score");
+        const messageElement = document.getElementById("message");
+        
+        let score = 0;
+        let isGameRunning = false;
+        let scoreInterval;
+        let checkDeadInterval;
+
+        // 监听键盘事件
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' || event.code === 'ArrowUp') {
+                if (!isGameRunning) {
+                    startGame();
+                } else {
+                    jump();
+                }
+            }
+        });
+
+        // 监听触摸事件 (手机端)
+        document.addEventListener('touchstart', function() {
+            if (!isGameRunning) {
+                startGame();
+            } else {
+                jump();
+            }
+        });
+
+        function startGame() {
+            if (isGameRunning) return;
+            
+            isGameRunning = true;
+            score = 0;
+            scoreElement.innerText = "得分: " + score;
+            messageElement.style.display = "none";
+            
+            // 重置仙人掌位置
+            cactus.classList.remove("cactus-move");
+            void cactus.offsetWidth; // 触发重绘
+            cactus.classList.add("cactus-move");
+
+            // 开始计分
+            scoreInterval = setInterval(() => {
+                score++;
+                scoreElement.innerText = "得分: " + score;
+            }, 100);
+
+            // 开始碰撞检测
+            checkDeadInterval = setInterval(checkCollision, 10);
+        }
+
+        function jump() {
+            if (!isGameRunning) return;
+            
+            // 如果已经在跳跃中，则不执行
+            if (dino.classList.contains("animate-jump")) {
+                return;
+            }
+            
+            dino.classList.add("animate-jump");
+            
+            // 动画结束后移除类，以便下次跳跃
+            setTimeout(function() {
+                dino.classList.remove("animate-jump");
+            }, 500);
+        }
+
+        function checkCollision() {
+            // 获取恐龙当前的垂直位置 (top)
+            // 因为恐龙是 absolute 定位，bottom 是 0，我们通过计算 top 来判断高度
+            // 游戏容器高度 200px，恐龙高度 50px。
+            // 落地时 top 应该是 150px。跳跃时 top 会变小。
+            
+            let dinoTop = parseInt(window.getComputedStyle(dino).getPropertyValue("top"));
+            
+            // 获取仙人掌当前的水平位置 (left)
+            let cactusLeft = parseInt(window.getComputedStyle(cactus).getPropertyValue("left"));
+
+            // 碰撞逻辑：
+            // 1. 仙人掌在恐龙的水平范围内 (0 < cactusLeft < 100)
+            // 2. 恐龙没有跳得足够高 (dinoTop >= 150 意味着恐龙还在地面或没跳起来)
+            // 注意：这里 dinoTop >= 150 是因为 CSS 中 bottom:0 对应 top:150 (200-50)
+            
+            if (cactusLeft < 100 && cactusLeft > 0 && dinoTop >= 150) {
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            
+            // 停止动画
+            cactus.classList.remove("cactus-move");
+            
+            // 清除定时器
+            clearInterval(scoreInterval);
+            clearInterval(checkDeadInterval);
+            
+            // 显示游戏结束信息
+            messageElement.innerHTML = `<h2>游戏结束!</h2><p>最终得分: ${score}</p><button onclick="startGame()">重新开始</button>`;
+            messageElement.style.display = "block";
+        }
+    </script>
+</body>
+</html>

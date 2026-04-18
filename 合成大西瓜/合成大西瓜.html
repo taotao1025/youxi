@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合成游戏 - 彻底修复版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffeaa7;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #fff;
+        }
+
+        #score-board {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        #danger-line {
+            position: absolute;
+            top: 100px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: repeating-linear-gradient(
+                45deg,
+                #ff0000,
+                #ff0000 10px,
+                #ffffff 10px,
+                #ffffff 20px
+            );
+            z-index: 50;
+            opacity: 0.8;
+            display: none;
+        }
+
+        #danger-text {
+            position: absolute;
+            top: 105px;
+            right: 5px;
+            color: red;
+            font-weight: bold;
+            font-size: 12px;
+            z-index: 50;
+            display: none;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: white;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #ff7675;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background-color: #d63031;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="score-board">得分: <span id="score">0</span></div>
+        <div id="danger-line"></div>
+        <div id="danger-text">危险区域</div>
+        
+        <div id="game-over">
+            <h1>游戏结束</h1>
+            <p>最终得分: <span id="final-score">0</span></p>
+            <button onclick="resetGame()">重新开始</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 游戏配置 ---
+        const WIDTH = 400;
+        const HEIGHT = 600;
+        const WALL_THICKNESS = 20;
+        const DANGER_LINE_Y = 100;
+        
+        const FRUITS = [
+            { radius: 20, color: '#ff7675', label: '1' },
+            { radius: 30, color: '#ffeaa7', label: '2' },
+            { radius: 40, color: '#fab1a0', label: '3' },
+            { radius: 50, color: '#fdcb6e', label: '4' },
+            { radius: 60, color: '#e17055', label: '5' },
+            { radius: 75, color: '#0984e3', label: '6' },
+            { radius: 90, color: '#6c5ce7', label: '7' },
+            { radius: 105, color: '#a29bfe', label: '8' },
+            { radius: 120, color: '#00b894', label: '9' },
+            { radius: 140, color: '#2d3436', label: '10' }
+        ];
+
+        // --- Matter.js 模块 ---
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Events = Matter.Events,
+              World = Matter.World;
+
+        // --- 全局变量 ---
+        let engine, render, runner;
+        let currentFruit = null;
+        let score = 0;
+        let isGameOver = false;
+        let canDrop = true;
+        let isWarning = false;
+        let gameOverTimer = null;
+
+        let inputHandlerMouseDown, inputHandlerTouchStart;
+        let collisionEventHandler, updateEventHandler, afterRenderEventHandle;
+
+        // --- 初始化 ---
+        function init() {
+            // 1. 创建引擎
+            engine = Engine.create();
+            engine.world.gravity.y = 1;
+
+            // 2. 创建渲染器
+            render = Render.create({
+                element: document.getElementById('game-container'),
+                engine: engine,
+                options: {
+                    width: WIDTH,
+                    height: HEIGHT,
+                    wireframes: false,
+                    background: '#fff',
+                    showAngleIndicator: false,
+                    showVelocity: false
+                }
+            });
+
+            // 3. 创建边界
+            const ground = Bodies.rectangle(WIDTH / 2, HEIGHT + WALL_THICKNESS / 2, WIDTH, WALL_THICKNESS, { isStatic: true, render: { fillStyle: '#636e72' } });
+            const leftWall = Bodies.rectangle(0 - WALL_THICKNESS / 2, HEIGHT / 2, WALL_THICKNESS, HEIGHT, { isStatic: true, render: { fillStyle: '#636e72' } });
+            const rightWall = Bodies.rectangle(WIDTH + WALL_THICKNESS / 2, HEIGHT / 2, WALL_THICKNESS, HEIGHT, { isStatic: true, render: { fillStyle: '#636e72' } });
+            World.add(engine.world, [ground, leftWall, rightWall]);
+
+            // 4. 运行渲染器和物理引擎
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            // 5. 生成第一个水果
+            createNextFruit();
+
+            // 6. 绑定事件监听器
+            inputHandlerMouseDown = handleInput.bind(this);
+            inputHandlerTouchStart = handleInput.bind(this);
+            const container = document.getElementById('game-container');
+            container.addEventListener('mousedown', inputHandlerMouseDown);
+            container.addEventListener('touchstart', inputHandlerTouchStart);
+
+            collisionEventHandler = handleCollisions;
+            updateEventHandler = gameLoop;
+            afterRenderEventHandle = drawCurrentFruit;
+            
+            Events.on(engine, 'collisionStart', collisionEventHandler);
+            Events.on(engine, 'beforeUpdate', updateEventHandler);
+            Events.on(render, 'afterRender', afterRenderEventHandle);
+
+            // 7. 显示警戒线
+            document.getElementById('danger-line').style.display = 'block';
+            document.getElementById('danger-text').style.display = 'block';
+        }
+
+        // --- 游戏主循环 (检测游戏结束) ---
+        function gameLoop() {
+            if (isGameOver) return;
+
+            const bodies = Composite.allBodies(engine.world);
+            let hasFruitInDangerZone = false;
+
+            for (let i = 0; i < bodies.length; i++) {
+                const body = bodies[i];
+                if (body.label.startsWith('fruit_') && body.position.y < DANGER_LINE_Y && body.position.y > 30) {
+                    hasFruitInDangerZone = true;
+                    break;
+                }
+            }
+
+            if (hasFruitInDangerZone) {
+                if (!isWarning) {
+                    isWarning = true;
+                    gameOverTimer = setTimeout(triggerGameOver, 2000);
+                }
+            } else {
+                isWarning = false;
+                if (gameOverTimer) {
+                    clearTimeout(gameOverTimer);
+                    gameOverTimer = null;
+                }
+            }
+        }
+
+        function triggerGameOver() {
+            isGameOver = true;
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'flex';
+            Runner.stop(runner);
+        }
+
+        function createNextFruit() {
+            if (isGameOver) return;
+
+            const randomIndex = Math.floor(Math.random() * 5);
+            const fruitConfig = FRUITS[randomIndex];
+
+            currentFruit = {
+                x: WIDTH / 2,
+                y: 50,
+                radius: fruitConfig.radius,
+                color: fruitConfig.color,
+                level: randomIndex
+            };
+            
+            canDrop = true;
+        }
+
+        // --- 绘制顶部待命水果 ---
+        function drawCurrentFruit() {
+            const ctx = render.context;
+            if (currentFruit && !isGameOver) {
+                ctx.beginPath();
+                ctx.arc(currentFruit.x, currentFruit.y, currentFruit.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = currentFruit.color;
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+            }
+        }
+
+        function handleInput(e) {
+            e.preventDefault();
+            if (!canDrop || isGameOver) return;
+
+            let clientX = e.clientX;
+            if(e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+            }
+
+            const rect = document.getElementById('game-container').getBoundingClientRect();
+            const x = clientX - rect.left;
+
+            const r = currentFruit.radius;
+            let finalX = x;
+            if (x < r) finalX = r;
+            if (x > WIDTH - r) finalX = WIDTH - r;
+
+            const fruit = Bodies.circle(finalX, 50, r, {
+                restitution: 0.2,
+                render: { fillStyle: currentFruit.color },
+                label: 'fruit_' + currentFruit.level
+            });
+
+            World.add(engine.world, fruit);
+            canDrop = false;
+
+            setTimeout(() => {
+                createNextFruit();
+            }, 600);
+        }
+
+        function handleCollisions(event) {
+            const pairs = event.pairs;
+            for (let i = 0; i < pairs.length; i++) {
+                const bodyA = pairs[i].bodyA;
+                const bodyB = pairs[i].bodyB;
+
+                if (bodyA.label.startsWith('fruit_') && bodyB.label.startsWith('fruit_')) {
+                    const levelA = parseInt(bodyA.label.split('_')[1]);
+                    const levelB = parseInt(bodyB.label.split('_')[1]);
+
+                    if (levelA === levelB && levelA < FRUITS.length - 1) {
+                        const newX = (bodyA.position.x + bodyB.position.x) / 2;
+                        const newY = (bodyA.position.y + bodyB.position.y) / 2;
+
+                        World.remove(engine.world, [bodyA, bodyB]);
+
+                        const nextLevel = levelA + 1;
+                        const newFruitConfig = FRUITS[nextLevel];
+                        
+                        const newFruit = Bodies.circle(newX, newY, newFruitConfig.radius, {
+                            restitution: 0.2,
+                            render: { fillStyle: newFruitConfig.color },
+                            label: 'fruit_' + nextLevel
+                        });
+
+                        World.add(engine.world, newFruit);
+                        score += (nextLevel + 1) * 10;
+                        document.getElementById('score').innerText = score;
+                    }
+                }
+            }
+        }
+
+        function resetGame() {
+            // 1. 停止物理引擎和渲染器
+            Runner.stop(runner);
+
+            // 2. 移除事件监听器
+            const container = document.getElementById('game-container');
+            container.removeEventListener('mousedown', inputHandlerMouseDown);
+            container.removeEventListener('touchstart', inputHandlerTouchStart);
+            Events.off(engine, 'collisionStart', collisionEventHandler);
+            Events.off(engine, 'beforeUpdate', updateEventHandler);
+            Events.off(render, 'afterRender', afterRenderEventHandle);
+
+            // 3. 清理物理世界
+            World.clear(engine.world); // 正确的调用方式
+            Engine.clear(engine);
+
+            // 4. 销毁渲染器
+            Render.stop(render);
+            render.canvas.remove(); // 从DOM中移除canvas
+
+            // 5. 清空变量（赋值为null，让垃圾回收器处理）
+            engine = null;
+            render = null;
+            runner = null;
+            inputHandlerMouseDown = null;
+            inputHandlerTouchStart = null;
+            collisionEventHandler = null;
+            updateEventHandler = null;
+            afterRenderEventHandle = null;
+
+            // 6. 重置所有游戏状态变量
+            score = 0;
+            isGameOver = false;
+            isWarning = false;
+            canDrop = true;
+            currentFruit = null;
+            if (gameOverTimer) {
+                clearTimeout(gameOverTimer);
+                gameOverTimer = null;
+            }
+
+            // 7. 重置UI
+            document.getElementById('score').innerText = '0';
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('danger-line').style.display = 'none';
+            document.getElementById('danger-text').style.display = 'none';
+
+            // 8. 重新初始化游戏，创建全新的实例
+            init();
+        }
+
+        // 启动游戏
+        init();
+
+    </script>
+</body>
+</html>
