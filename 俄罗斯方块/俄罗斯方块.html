@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块 - 经典版</title>
+    <style>
+        body {
+            background: #202028;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 游戏容器 */
+        #game-container {
+            position: relative;
+            border: 4px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: none; /* 默认隐藏，点击开始后显示 */
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+        }
+
+        /* 界面层 (主页、分数、游戏结束) */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 让点击穿透到下层，除非是按钮 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin: 0 0 20px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(#ff0055, #ffcc00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(255, 0, 85, 0.3);
+        }
+
+        p {
+            font-size: 1.2em;
+            color: #ccc;
+            margin-bottom: 30px;
+        }
+
+        button {
+            pointer-events: auto;
+            background: linear-gradient(45deg, #ff0055, #ff5500);
+            border: none;
+            padding: 15px 40px;
+            color: white;
+            font-size: 1.2em;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 85, 0, 0.6);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        /* 游戏中的分数显示 */
+        #score-board {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            text-align: right;
+            font-size: 0.8em;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .controls-hint {
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .key {
+            display: inline-block;
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 0 2px;
+            font-family: monospace;
+            border-bottom: 2px solid #111;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 主页 / 开始菜单 -->
+    <div id="main-menu" class="ui-layer" style="position: static; background: none;">
+        <h1>TETRIS</h1>
+        <p>经典俄罗斯方块网页版</p>
+        <button onclick="startGame()">开始游戏</button>
+        <div class="controls-hint">
+            <p>操作说明:</p>
+            <p><span class="key">←</span> <span class="key">→</span> 移动 &nbsp; <span class="key">↑</span> 旋转 &nbsp; <span class="key">↓</span> 加速</p>
+        </div>
+    </div>
+
+    <!-- 游戏容器 -->
+    <div id="game-container">
+        <canvas id="tetris" width="240" height="400"></canvas>
+        
+        <!-- 游戏内分数 -->
+        <div id="score-board">
+            <div>分数</div>
+            <div id="score-value" style="font-size: 1.5em; color: #fff;">0</div>
+        </div>
+
+        <!-- 游戏结束弹窗 -->
+        <div id="game-over" class="ui-layer hidden">
+            <h1>GAME OVER</h1>
+            <p>最终得分: <span id="final-score">0</span></p>
+            <button onclick="resetGame()">再玩一次</button>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('tetris');
+const context = canvas.getContext('2d');
+const scoreElement = document.getElementById('score-value');
+const finalScoreElement = document.getElementById('final-score');
+const mainMenu = document.getElementById('main-menu');
+const gameContainer = document.getElementById('game-container');
+const gameOverScreen = document.getElementById('game-over');
+
+context.scale(20, 20);
+
+// 消除行
+function arenaSweep() {
+    let rowCount = 1;
+    outer: for (let y = arena.length - 1; y > 0; --y) {
+        for (let x = 0; x < arena[y].length; ++x) {
+            if (arena[y][x] === 0) {
+                continue outer;
+            }
+        }
+        const row = arena.splice(y, 1)[0].fill(0);
+        arena.unshift(row);
+        ++y;
+        player.score += rowCount * 10;
+        rowCount *= 2;
+    }
+}
+
+// 碰撞检测
+function collide(arena, player) {
+    const [m, o] = [player.matrix, player.pos];
+    for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+            if (m[y][x] !== 0 &&
+               (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function createMatrix(w, h) {
+    const matrix = [];
+    while (h--) {
+        matrix.push(new Array(w).fill(0));
+    }
+    return matrix;
+}
+
+function createPiece(type) {
+    if (type === 'I') {
+        return [[0, 1, 0, 0],[0, 1, 0, 0],[0, 1, 0, 0],[0, 1, 0, 0]];
+    } else if (type === 'L') {
+        return [[0, 2, 0],[0, 2, 0],[0, 2, 2]];
+    } else if (type === 'J') {
+        return [[0, 3, 0],[0, 3, 0],[3, 3, 0]];
+    } else if (type === 'O') {
+        return [[4, 4],[4, 4]];
+    } else if (type === 'Z') {
+        return [[5, 5, 0],[0, 5, 5],[0, 0, 0]];
+    } else if (type === 'S') {
+        return [[0, 6, 6],[6, 6, 0],[0, 0, 0]];
+    } else if (type === 'T') {
+        return [[0, 7, 0],[7, 7, 7],[0, 0, 0]];
+    }
+}
+
+function draw() {
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawMatrix(arena, {x: 0, y: 0});
+    drawMatrix(player.matrix, player.pos);
+}
+
+function drawMatrix(matrix, offset) {
+    matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+            if (value !== 0) {
+                const colors = [
+                    null, '#FF0D72', '#0DC2FF', '#0DFF72',
+                    '#F538FF', '#FF8E0D', '#FFE138', '#3877FF'
+                ];
+                context.fillStyle = colors[value];
+                context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                context.lineWidth = 0.05;
+                context.strokeStyle = 'rgba(255,255,255,0.5)';
+                context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+            }
+        });
+    });
+}
+
+function merge(arena, player) {
+    player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+            if (value !== 0) {
+                arena[y + player.pos.y][x + player.pos.x] = value;
+            }
+        });
+    });
+}
+
+function rotate(matrix, dir) {
+    for (let y = 0; y < matrix.length; ++y) {
+        for (let x = 0; x < y; ++x) {
+            [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+        }
+    }
+    if (dir > 0) {
+        matrix.forEach(row => row.reverse());
+    } else {
+        matrix.reverse();
+    }
+}
+
+function playerDrop() {
+    player.pos.y++;
+    if (collide(arena, player)) {
+        player.pos.y--;
+        merge(arena, player);
+        playerReset();
+        arenaSweep();
+        updateScore();
+    }
+    dropCounter = 0;
+}
+
+function playerMove(offset) {
+    player.pos.x += offset;
+    if (collide(arena, player)) {
+        player.pos.x -= offset;
+    }
+}
+
+function playerReset() {
+    const pieces = 'ILJOTSZ';
+    player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+    player.pos.y = 0;
+    player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+    
+    if (collide(arena, player)) {
+        // 游戏结束
+        gameOver();
+    }
+}
+
+function playerRotate(dir) {
+    const pos = player.pos.x;
+    let offset = 1;
+    rotate(player.matrix, dir);
+    while (collide(arena, player)) {
+        player.pos.x += offset;
+        offset = -(offset + (offset > 0 ? 1 : -1));
+        if (offset > player.matrix[0].length) {
+            rotate(player.matrix, -dir);
+            player.pos.x = pos;
+            return;
+        }
+    }
+}
+
+// --- 游戏状态控制 ---
+
+let dropCounter = 0;
+let dropInterval = 1000;
+let lastTime = 0;
+let isPaused = true; // 初始状态为暂停（在主页）
+
+function update(time = 0) {
+    if (isPaused) return; // 如果暂停，停止循环
+
+    const deltaTime = time - lastTime;
+    lastTime = time;
+
+    dropCounter += deltaTime;
+    if (dropCounter > dropInterval) {
+        playerDrop();
+    }
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function updateScore() {
+    scoreElement.innerText = player.score;
+}
+
+const arena = createMatrix(12, 20);
+const player = {
+    pos: {x: 0, y: 0},
+    matrix: null,
+    score: 0,
+};
+
+// 键盘事件
+document.addEventListener('keydown', event => {
+    if (isPaused) return; // 暂停时不响应操作
+
+    if (event.keyCode === 37) {
+        playerMove(-1);
+    } else if (event.keyCode === 39) {
+        playerMove(1);
+    } else if (event.keyCode === 40) {
+        playerDrop();
+    } else if (event.keyCode === 38) {
+        playerRotate(1);
+    }
+});
+
+// --- 页面逻辑函数 ---
+
+function startGame() {
+    mainMenu.classList.add('hidden'); // 隐藏主页
+    gameContainer.style.display = 'block'; // 显示游戏容器
+    resetGameLogic(); // 重置游戏数据
+    isPaused = false; // 开始循环
+    update(); // 启动动画
+}
+
+function gameOver() {
+    isPaused = true; // 停止循环
+    finalScoreElement.innerText = player.score;
+    gameOverScreen.classList.remove('hidden'); // 显示游戏结束层
+}
+
+function resetGame() {
+    gameOverScreen.classList.add('hidden'); // 隐藏游戏结束层
+    resetGameLogic();
+    isPaused = false;
+    update();
+}
+
+function resetGameLogic() {
+    arena.forEach(row => row.fill(0));
+    player.score = 0;
+    updateScore();
+    playerReset();
+}
+
+</script>
+</body>
+</html>
