@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>切水果 - 平衡版</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #222;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            gap: 20px;
+        }
+        .stat-box {
+            font-size: 24px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+        .score-val { color: #ffcc00; }
+        .high-score-val { color: #00ffcc; }
+        .timer-val { color: #ff3333; }
+        
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            color: white;
+            z-index: 10;
+        }
+        h1 { font-size: 60px; margin: 0 0 20px 0; color: #ffcc00; text-shadow: 4px 4px #ff0000; }
+        p { font-size: 20px; color: #ccc; margin-bottom: 30px; text-align: center; line-height: 1.5; }
+        button {
+            padding: 15px 50px;
+            font-size: 24px;
+            background: linear-gradient(to bottom, #ffcc00, #ff9900);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: #333;
+            font-weight: bold;
+            box-shadow: 0 4px #cc7a00;
+            transition: transform 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 0 #cc7a00; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- UI 层 -->
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div class="stat-box">最高分: <span id="high-score" class="high-score-val">0</span></div>
+            <div class="stat-box">分数: <span id="score" class="score-val">0</span></div>
+            <div class="stat-box">时间: <span id="time" class="timer-val">60</span>s</div>
+        </div>
+    </div>
+
+    <!-- 开始屏幕 -->
+    <div id="start-screen">
+        <h1>切水果挑战</h1>
+        <p>60秒限时挑战！<br><span style="color:#ff3333">切到炸弹扣 50 分！</span><br>冲击你的最高纪录吧！</p>
+        <button onclick="startGame()">开始游戏</button>
+    </div>
+
+    <!-- 游戏结束屏幕 -->
+    <div id="game-over-screen" class="hidden">
+        <h1 id="end-title">时间到！</h1>
+        <p>本局得分：<span id="final-score" style="color:#ffcc00; font-weight:bold; font-size:40px;">0</span><br>
+           历史最高：<span id="final-high-score" style="color:#00ffcc; font-weight:bold;">0</span></p>
+        <button onclick="startGame()">再玩一次</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('high-score');
+    const timeEl = document.getElementById('time');
+    const finalScoreEl = document.getElementById('final-score');
+    const finalHighScoreEl = document.getElementById('final-high-score');
+    const endTitle = document.getElementById('end-title');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+
+    // 游戏状态
+    let width, height;
+    let score = 0;
+    let highScore = localStorage.getItem('fruitNinjaHighScore') || 0;
+    let timeLeft = 60;
+    let gameRunning = false;
+    let fruits = [];
+    let particles = [];
+    let floatingTexts = [];
+    let mousePath = []; 
+    let spawnTimer = 0;
+    let difficultyMultiplier = 1;
+    let timerInterval;
+    
+    // 屏幕震动参数
+    let shakeDuration = 0;
+    let shakeMagnitude = 0;
+
+    highScoreEl.innerText = highScore;
+
+    // 配置
+    const GRAVITY = 0.2;
+    const BOMB_PENALTY = 50; 
+
+    const FRUIT_TYPES = [
+        { name: 'apple', color: '#ff3333', innerColor: '#ffffcc', radius: 30, score: 10 },
+        { name: 'orange', color: '#ff9900', innerColor: '#ffcc66', radius: 28, score: 15 },
+        { name: 'watermelon', color: '#2ecc71', innerColor: '#ff6b6b', radius: 35, score: 20 },
+        { name: 'bomb', color: '#2c3e50', innerColor: '#e74c3c', radius: 40, score: 0, isBomb: true }
+    ];
+
+    function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // 输入处理
+    let isMouseDown = false;
+    
+    function updateMousePos(e) {
+        if (!gameRunning) return;
+        const x = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+        const y = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+        
+        mousePath.push({ x, y, life: 8 });
+        checkCollision(x, y);
+    }
+
+    window.addEventListener('mousedown', (e) => { isMouseDown = true; updateMousePos(e); });
+    window.addEventListener('mousemove', (e) => { if(isMouseDown) updateMousePos(e); });
+    window.addEventListener('mouseup', () => { isMouseDown = false; });
+    
+    window.addEventListener('touchstart', (e) => { isMouseDown = true; updateMousePos(e); }, {passive: false});
+    window.addEventListener('touchmove', (e) => { if(isMouseDown) updateMousePos(e); e.preventDefault(); }, {passive: false});
+    window.addEventListener('touchend', () => { isMouseDown = false; });
+
+    class Fruit {
+        constructor() {
+            this.x = Math.random() * (width - 100) + 50;
+            this.y = height + 60;
+            
+            const centerOffset = (this.x - width/2) / (width/2);
+            // 稍微降低一点垂直速度，让水果飞得低一点，好切一点
+            this.vx = -centerOffset * 2 + (Math.random() - 0.5); 
+            this.vy = -(Math.random() * 3 + 11 + (difficultyMultiplier * 0.5)); 
+            
+            this.angle = 0;
+            this.va = (Math.random() - 0.5) * 0.2;
+
+            // 降低炸弹概率到 12%
+            const isBomb = Math.random() < 0.12;
+            this.type = isBomb ? FRUIT_TYPES[3] : FRUIT_TYPES[Math.floor(Math.random() * 3)];
+            
+            this.active = true;
+            this.sliced = false;
+            this.bombFuse = 0;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += GRAVITY;
+            this.angle += this.va;
+
+            if (this.type.isBomb) {
+                this.bombFuse++;
+            }
+
+            if (this.y > height + 100) this.active = false;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle);
+            
+            if (this.type.isBomb) {
+                ctx.beginPath();
+                ctx.arc(0, 0, this.type.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.type.color;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(-10, -10, 10, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '30px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('☠️', 0, 2);
+
+                if (Math.floor(this.bombFuse / 5) % 2 === 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.type.radius);
+                    ctx.lineTo(10, -this.type.radius - 15);
+                    ctx.strokeStyle = '#e67e22';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.arc(10, -this.type.radius - 15, 5, 0, Math.PI*2);
+                    ctx.fillStyle = '#f1c40f';
+                    ctx.fill();
+                }
+
+            } else {
+                ctx.beginPath();
+                ctx.arc(0, 0, this.type.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.type.color;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, this.type.radius * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = this.type.innerColor;
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+    }
+
+    class Particle {
+        constructor(x, y, color, speed = 10) {
+            this.x = x;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * speed;
+            this.vy = (Math.random() - 0.5) * speed;
+            this.life = 1.0;
+            this.color = color;
+            this.size = Math.random() * 6 + 2;
+            this.decay = Math.random() * 0.02 + 0.01;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += GRAVITY;
+            this.life -= this.decay;
+        }
+        draw() {
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    class FloatingText {
+        constructor(x, y, text, color) {
+            this.x = x;
+            this.y = y;
+            this.text = text;
+            this.color = color;
+            this.life = 1.0;
+            this.vy = -2;
+        }
+        update() {
+            this.y += this.vy;
+            this.life -= 0.02;
+        }
+        draw() {
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.font = "bold 40px Arial";
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    function triggerShake(magnitude, duration) {
+        shakeMagnitude = magnitude;
+        shakeDuration = duration;
+    }
+
+    function checkCollision(mx, my) {
+        fruits.forEach(fruit => {
+            if (fruit.sliced) return;
+
+            const dx = mx - fruit.x;
+            const dy = my - fruit.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < fruit.type.radius) {
+                if (fruit.type.isBomb) {
+                    handleBombHit(fruit);
+                } else {
+                    sliceFruit(fruit);
+                }
+            }
+        });
+    }
+
+    function handleBombHit(fruit) {
+        fruit.sliced = true;
+        fruit.active = false;
+        
+        score = Math.max(0, score - BOMB_PENALTY);
+        scoreEl.innerText = score;
+        
+        triggerShake(25, 25);
+        createExplosion(fruit.x, fruit.y);
+        
+        floatingTexts.push(new FloatingText(fruit.x, fruit.y, "-" + BOMB_PENALTY, "#ff0000"));
+    }
+
+    function createExplosion(x, y) {
+        for(let i=0; i<50; i++) {
+            particles.push(new Particle(x, y, '#e74c3c', 20));
+            particles.push(new Particle(x, y, '#f1c40f', 15));
+            particles.push(new Particle(x, y, '#333', 10));
+        }
+    }
+
+    function sliceFruit(fruit) {
+        fruit.sliced = true;
+        fruit.active = false;
+        
+        score += fruit.type.score;
+        scoreEl.innerText = score;
+
+        for(let i=0; i<10; i++) {
+            particles.push(new Particle(fruit.x, fruit.y, fruit.type.color));
+        }
+        
+        floatingTexts.push(new FloatingText(fruit.x, fruit.y, "+" + fruit.type.score, "#fff"));
+    }
+
+    function updateHighScore() {
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('fruitNinjaHighScore', highScore);
+            highScoreEl.innerText = highScore;
+            return true;
+        }
+        return false;
+    }
+
+    function startTimer() {
+        clearInterval(timerInterval);
+        timeLeft = 60;
+        timeEl.innerText = timeLeft;
+        
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            timeEl.innerText = timeLeft;
+            
+            if(timeLeft <= 10) {
+                timeEl.parentElement.style.borderColor = '#ff3333';
+            } else {
+                timeEl.parentElement.style.borderColor = 'rgba(255,255,255,0.1)';
+            }
+
+            if (timeLeft <= 0) {
+                gameOver("时间到！");
+            }
+        }, 1000);
+    }
+
+    // 游戏主循环
+    function loop() {
+        if (!gameRunning) return;
+
+        ctx.save();
+        if (shakeDuration > 0) {
+            const dx = (Math.random() - 0.5) * shakeMagnitude;
+            const dy = (Math.random() - 0.5) * shakeMagnitude;
+            ctx.translate(dx, dy);
+            shakeDuration--;
+        }
+
+        ctx.fillStyle = 'rgba(34, 34, 34, 0.4)';
+        ctx.fillRect(-20, -20, width+40, height+40);
+
+        if (mousePath.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(mousePath[0].x, mousePath[0].y);
+            for (let i = 1; i < mousePath.length; i++) {
+                ctx.lineTo(mousePath[i].x, mousePath[i].y);
+            }
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ffff';
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        mousePath.forEach(p => p.life--);
+        mousePath = mousePath.filter(p => p.life > 0);
+
+        // --- 难度控制优化 ---
+        spawnTimer++;
+        
+        // 基础生成率设为 70 (之前是50)，意味着开局节奏更慢
+        let baseSpawnRate = 70; 
+        
+        // 难度系数增长变缓
+        let currentDifficulty = 1 + (60 - timeLeft) / 40; 
+        
+        let spawnRate = baseSpawnRate / currentDifficulty;
+
+        // 限制最高生成频率，防止最后几秒钟满屏都是水果
+        // 设置最小间隔为 20 帧 (约0.3秒生成一个批次)
+        if (spawnRate < 20) spawnRate = 20;
+
+        if (spawnTimer > spawnRate) {
+            fruits.push(new Fruit());
+            
+            // 只有当分数较高或时间较少时，才偶尔一次抛出两个
+            let extraFruitChance = 0.3;
+            if (timeLeft < 15) extraFruitChance = 0.5; // 最后15秒增加双果概率
+            
+            if(Math.random() > (1 - extraFruitChance)) {
+                fruits.push(new Fruit());
+            }
+            
+            spawnTimer = 0;
+        }
+
+        fruits.forEach(f => { f.update(); f.draw(); });
+        fruits = fruits.filter(f => f.active);
+
+        particles.forEach(p => { p.update(); p.draw(); });
+        particles = particles.filter(p => p.life > 0);
+
+        floatingTexts.forEach(t => { t.update(); t.draw(); });
+        floatingTexts = floatingTexts.filter(t => t.life > 0);
+
+        ctx.restore();
+
+        requestAnimationFrame(loop);
+    }
+
+    function startGame() {
+        score = 0;
+        scoreEl.innerText = '0';
+        fruits = [];
+        particles = [];
+        floatingTexts = [];
+        mousePath = [];
+        difficultyMultiplier = 1;
+        gameRunning = true;
+        
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        
+        startTimer();
+        loop();
+    }
+
+    function gameOver(msg) {
+        gameRunning = false;
+        clearInterval(timerInterval);
+        
+        const isNewRecord = updateHighScore();
+        
+        finalScoreEl.innerText = score;
+        finalHighScoreEl.innerText = highScore;
+        endTitle.innerText = msg;
+        
+        if(isNewRecord) {
+            endTitle.innerText += " 新纪录!";
+            endTitle.style.color = "#00ffcc";
+        } else {
+            endTitle.style.color = "#ffcc00";
+        }
+
+        setTimeout(() => {
+            gameOverScreen.classList.remove('hidden');
+        }, 1000);
+    }
+
+</script>
+</body>
+</html>
