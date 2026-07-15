@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>火柴人</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body {
+background: #f0f8ff;
+font-family: sans-serif;
+}
+/* 战场容器 */
+.battle-field {
+position: relative;
+width: 100%;
+height: 220px;
+background: #e0f7fa;
+border-radius: 8px;
+overflow: hidden;
+}
+.stick {
+position: absolute;
+width: 60px;
+height: 120px;
+transition: left 0.1s ease, top 0.1s ease;
+}
+/* 玩家火柴人初始位置 */
+#p1 {
+left: 20%;
+top: calc(100% - 160px);
+}
+/* 电脑火柴人初始位置 */
+#p2 {
+right: 20%;
+top: calc(100% - 160px);
+}
+
+/* 火柴人样式 */
+.head {
+width: 24px;
+height: 24px;
+border: 3px solid #222;
+border-radius: 50%;
+position: absolute;
+left: 18px;
+top: 0;
+}
+.body {
+width: 3px;
+height: 50px;
+background: #222;
+position: absolute;
+left: 30px;
+top: 24px;
+}
+.arm {
+width: 35px;
+height: 3px;
+background: #222;
+position: absolute;
+top: 35px;
+}
+.leg {
+width: 35px;
+height: 3px;
+background: #222;
+position: absolute;
+top: 74px;
+}
+.left-arm { left: -5px; transform: rotate(-30deg); }
+.right-arm { right: -5px; transform: rotate(30deg); }
+.left-leg { left: -5px; transform: rotate(40deg); }
+.right-leg { right: -5px; transform: rotate(-40deg); }
+
+/* 攻击/受伤/防御/预警动画 */
+@keyframes attack {
+0% { transform: translateX(0); }
+50% { transform: translateX(30px); }
+100% { transform: translateX(0); }
+}
+@keyframes hurt {
+0%,100% { opacity: 1; }
+50% { opacity: 0.4; }
+}
+@keyframes defend {
+0%,100% { transform: scale(1); }
+50% { transform: scale(1.05); border-color: #3b82f6; }
+}
+@keyframes attack-warning {
+0%,100% { background: rgba(239, 68, 68, 0.5); }
+50% { background: rgba(239, 68, 68, 0.8); }
+}
+.attack { animation: attack 0.4s; }
+.hurt { animation: hurt 0.4s; }
+.defend { 
+  animation: defend 0.3s; 
+  border: 2px solid #3b82f6;
+  border-radius: 4px;
+}
+.attack-warning {
+  position: absolute;
+  width: 80px;
+  height: 120px;
+  left: -10px;
+  top: 0;
+  border-radius: 4px;
+  animation: attack-warning 0.8s;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 键盘提示样式 */
+.key-hint {
+background: #e5e7eb;
+padding: 2px 6px;
+border-radius: 3px;
+font-size: 12px;
+border: 1px solid #9ca3af;
+}
+/* 地面样式 */
+.ground {
+position: absolute;
+bottom: 0;
+width: 100%;
+height: 10px;
+background: #4d7c0f;
+}
+
+/* 难度/关卡选择样式 */
+.level-select {
+display: flex;
+gap: 2px;
+margin-bottom: 10px;
+flex-wrap: wrap;
+}
+.level-btn {
+padding: 4px 8px;
+border-radius: 4px;
+border: 1px solid #9ca3af;
+background: #f3f4f6;
+cursor: pointer;
+font-size: 12px;
+}
+.level-btn.active {
+background: #3b82f6;
+color: white;
+border-color: #2563eb;
+}
+.difficulty-btn {
+padding: 4px 12px;
+border-radius: 4px;
+border: none;
+color: white;
+cursor: pointer;
+font-size: 12px;
+margin-right: 4px;
+}
+.difficulty-easy { background: #10b981; }
+.difficulty-medium { background: #f59e0b; }
+.difficulty-hard { background: #ef4444; }
+.difficulty-btn.active {
+box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor;
+}
+
+/* 关卡提示 */
+.level-info {
+font-weight: bold;
+color: #374151;
+margin-bottom: 8px;
+}
+
+/* 防御技能样式 */
+.defense-info {
+color: #2563eb;
+font-size: 12px;
+margin-bottom: 8px;
+font-weight: bold;
+}
+.defense-cooldown {
+color: #ef4444;
+font-size: 11px;
+}
+</style>
+</head>
+<body class="flex flex-col items-center py-8">
+
+<h1 class="text-3xl font-bold mb-4">🔥火柴人大乱斗（终极版）🔥</h1>
+<!-- 操作提示（新增防御技能） -->
+<p class="text-gray-600 mb-2">操作说明：<span class="key-hint">↑↓←→</span> 全方向移动 | <span class="key-hint">空格</span> 攻击 | <span class="key-hint">R</span> 重新开始 | <span class="key-hint">Shift</span> 防御（减免80%伤害）</p>
+<p class="defense-info">💡 防御有5秒冷却 | 电脑攻击前会出现红色预警！</p>
+
+<div class="w-full max-w-xl bg-white rounded-xl shadow p-4">
+  <!-- 难度选择 -->
+  <div class="mb-2">
+    <span class="text-sm font-bold mr-2">难度：</span>
+    <button class="difficulty-btn difficulty-easy active" onclick="setDifficulty('easy')">简单</button>
+    <button class="difficulty-btn difficulty-medium" onclick="setDifficulty('medium')">中等</button>
+    <button class="difficulty-btn difficulty-hard" onclick="setDifficulty('hard')">困难</button>
+  </div>
+
+  <!-- 关卡选择 -->
+  <div class="mb-4">
+    <div class="level-info">当前关卡：<span id="currentLevel">1</span>/5 | 击败所有关卡通关！</div>
+    <div class="level-select">
+      <button class="level-btn active" onclick="gotoLevel(1)">1</button>
+      <button class="level-btn" onclick="gotoLevel(2)">2</button>
+      <button class="level-btn" onclick="gotoLevel(3)">3</button>
+      <button class="level-btn" onclick="gotoLevel(4)">4</button>
+      <button class="level-btn" onclick="gotoLevel(5)">5</button>
+    </div>
+  </div>
+
+  <!-- 血条 + 防御冷却提示 -->
+  <div class="flex justify-between mb-2 text-sm font-bold">
+    <div>玩家 <span id="hp1">100</span> <span id="defenseCooldown" class="defense-cooldown"></span></div>
+    <div>电脑 <span id="hp2">100</span></div>
+  </div>
+  <div class="flex gap-2 mb-6">
+    <div class="w-1/2 h-4 bg-gray-200 rounded overflow-hidden">
+      <div id="bar1" class="h-full bg-green-500" style="width:100%"></div>
+    </div>
+    <div class="w-1/2 h-4 bg-gray-200 rounded overflow-hidden">
+      <div id="bar2" class="h-full bg-green-500" style="width:100%"></div>
+    </div>
+  </div>
+
+  <!-- 战场 -->
+  <div class="battle-field relative w-full h-[220px] bg-blue-50 rounded overflow-hidden">
+    <div class="ground"></div>
+    <!-- 玩家火柴人 -->
+    <div id="p1" class="stick">
+      <div class="head"></div>
+      <div class="body"></div>
+      <div class="arm left-arm"></div>
+      <div class="arm right-arm"></div>
+      <div class="leg left-leg"></div>
+      <div class="leg right-leg"></div>
+    </div>
+    <!-- 电脑火柴人（新增预警容器） -->
+    <div id="p2" class="stick">
+      <div class="attack-warning" id="attackWarning" style="display: none;"></div>
+      <div class="head"></div>
+      <div class="body"></div>
+      <div class="arm left-arm"></div>
+      <div class="arm right-arm"></div>
+      <div class="leg left-leg"></div>
+      <div class="leg right-leg"></div>
+    </div>
+    <div id="msg" class="absolute top-10 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1 rounded opacity-0 transition-opacity">按↑↓←→移动，空格攻击！</div>
+  </div>
+
+  <!-- 按钮（新增防御按钮） -->
+  <div class="mt-4 flex justify-center gap-3">
+    <button onclick="attack()" class="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded font-bold">攻击</button>
+    <button onclick="defend()" class="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded font-bold">防御</button>
+    <button onclick="resetGame()" class="bg-gray-500 hover:gray-600 text-white px-5 py-2 rounded">重新开始</button>
+  </div>
+</div>
+
+<script>
+// 游戏核心配置
+let gameState = {
+  hp1: 100,          // 玩家血量
+  hp2: 100,          // 电脑血量
+  gameOver: false,   // 游戏结束标识
+  isAttacking: false,// 攻击冷却（玩家+电脑）
+  currentLevel: 1,   // 当前关卡（1-5）
+  difficulty: 'easy',// 当前难度（easy/medium/hard）
+  // 关卡配置：每个关卡的电脑属性（基础值 + 难度加成）
+  levelConfig: [
+    { hp: 100, minDmg: 6, maxDmg: 10, attackSpeed: 800, activeAttackInterval: 3000, moveSpeed: 2 }, // 关卡1
+    { hp: 120, minDmg: 7, maxDmg: 11, attackSpeed: 700, activeAttackInterval: 2500, moveSpeed: 2.5 }, // 关卡2
+    { hp: 140, minDmg: 8, maxDmg: 12, attackSpeed: 600, activeAttackInterval: 2000, moveSpeed: 3 }, // 关卡3
+    { hp: 160, minDmg: 9, maxDmg: 13, attackSpeed: 500, activeAttackInterval: 1500, moveSpeed: 3.5 }, // 关卡4
+    { hp: 200, minDmg: 10, maxDmg: 15, attackSpeed: 400, activeAttackInterval: 1000, moveSpeed: 4 } // 关卡5
+  ],
+  // 难度加成
+  difficultyBonus: {
+    easy: { hp: 0, dmg: 0, attackSpeed: 0, activeAttackInterval: 1000, moveSpeed: 0 },    // 简单
+    medium: { hp: 20, dmg: 2, attackSpeed: -100, activeAttackInterval: 500, moveSpeed: 0.5 }, // 中等
+    hard: { hp: 50, dmg: 4, attackSpeed: -200, activeAttackInterval: 0, moveSpeed: 1 }  // 困难
+  },
+  activeAttackTimer: null, // 电脑主动攻击的定时器
+  computerMoveTimer: null, // 电脑主动移动的定时器
+  isDefending: false,      // 玩家是否在防御
+  defenseCooldown: 0,      // 防御冷却时间（秒）
+  defenseCooldownTimer: null // 防御冷却定时器
+};
+
+// DOM元素
+const p1 = document.getElementById('p1');
+const p2 = document.getElementById('p2');
+const msg = document.getElementById('msg');
+const battleField = document.querySelector('.battle-field');
+const currentLevelEl = document.getElementById('currentLevel');
+const levelBtns = document.querySelectorAll('.level-btn');
+const difficultyBtns = document.querySelectorAll('.difficulty-btn');
+const attackWarning = document.getElementById('attackWarning');
+const defenseCooldownEl = document.getElementById('defenseCooldown');
+
+// 移动配置
+const moveSpeed = 5;
+let playerPos = {
+  left: 20,
+  top: (battleField.offsetHeight - 160) / battleField.offsetHeight * 100
+};
+let computerPos = {
+  left: 80, // 初始右20% = left 80%
+  top: (battleField.offsetHeight - 160) / battleField.offsetHeight * 100
+};
+
+// 显示提示文字
+function showTxt(text) {
+  msg.textContent = text;
+  msg.style.opacity = 1;
+  setTimeout(() => msg.style.opacity = 0, 1000);
+}
+
+// 更新生命值显示
+function updateHP() {
+  const hp1 = Math.max(0, gameState.hp1);
+  const hp2 = Math.max(0, gameState.hp2);
+  document.getElementById('hp1').textContent = hp1;
+  document.getElementById('hp2').textContent = hp2;
+  document.getElementById('bar1').style.width = hp1 + '%';
+  document.getElementById('bar2').style.width = hp2 + '%';
+  
+  // 低血量警告（变红）
+  document.getElementById('bar1').className = `h-full ${hp1 < 30 ? 'bg-red-500' : 'bg-green-500'}`;
+  document.getElementById('bar2').className = `h-full ${hp2 < 30 ? 'bg-red-500' : 'bg-green-500'}`;
+}
+
+// 更新防御冷却显示
+function updateDefenseCooldown() {
+  if (gameState.defenseCooldown > 0) {
+    defenseCooldownEl.textContent = `(防御冷却: ${gameState.defenseCooldown}s)`;
+  } else {
+    defenseCooldownEl.textContent = '';
+  }
+}
+
+// 获取当前关卡的电脑属性（基础值 + 难度加成）
+function getEnemyConfig() {
+  const levelCfg = gameState.levelConfig[gameState.currentLevel - 1];
+  const diffBonus = gameState.difficultyBonus[gameState.difficulty];
+  return {
+    hp: levelCfg.hp + diffBonus.hp,
+    minDmg: levelCfg.minDmg + diffBonus.dmg,
+    maxDmg: levelCfg.maxDmg + diffBonus.dmg,
+    attackSpeed: levelCfg.attackSpeed + diffBonus.attackSpeed,
+    activeAttackInterval: levelCfg.activeAttackInterval - diffBonus.activeAttackInterval,
+    moveSpeed: levelCfg.moveSpeed + diffBonus.moveSpeed
+  };
+}
+
+// 电脑主动移动（向玩家靠近）
+function computerMove() {
+  if (gameState.gameOver) return;
+  
+  const enemyCfg = getEnemyConfig();
+  const fieldWidth = battleField.offsetWidth;
+  
+  // 计算玩家和电脑的像素位置
+  const playerLeftPx = (playerPos.left / 100) * fieldWidth;
+  const computerLeftPx = (computerPos.left / 100) * fieldWidth;
+  
+  // 电脑向玩家方向移动（只左右移动，保持y轴一致）
+  const distance = playerLeftPx - computerLeftPx;
+  const moveStep = (enemyCfg.moveSpeed / fieldWidth) * 100; // 转百分比
+  
+  // 只在距离大于50px时移动（避免贴脸）
+  if (Math.abs(distance) > 50) {
+    if (distance > 0) {
+      // 玩家在右侧，电脑右移
+      if (computerLeftPx < fieldWidth - p2.offsetWidth - 10) {
+        computerPos.left += moveStep;
+      }
+    } else {
+      // 玩家在左侧，电脑左移
+      if (computerLeftPx > 10) {
+        computerPos.left -= moveStep;
+      }
+    }
+    p2.style.left = computerPos.left + '%';
+  }
+}
+
+// 启动电脑主动移动定时器
+function startComputerMove() {
+  if (gameState.computerMoveTimer) {
+    clearInterval(gameState.computerMoveTimer);
+  }
+  
+  if (gameState.gameOver) return;
+  
+  // 每50ms移动一次，更流畅
+  gameState.computerMoveTimer = setInterval(() => {
+    computerMove();
+  }, 50);
+}
+
+// 显示攻击预警
+function showAttackWarning() {
+  attackWarning.style.display = 'block';
+  setTimeout(() => {
+    attackWarning.style.display = 'none';
+  }, 800); // 预警显示0.8秒
+}
+
+// 电脑主动攻击函数
+function computerActiveAttack() {
+  if (gameState.gameOver || gameState.isAttacking) return;
+  
+  const enemyCfg = getEnemyConfig();
+  // 随机判定：简单难度70%攻击概率，中等80%，困难90%
+  const attackProbability = gameState.difficulty === 'easy' ? 0.7 : 
+                            gameState.difficulty === 'medium' ? 0.8 : 0.9;
+  
+  if (Math.random() < attackProbability) {
+    gameState.isAttacking = true;
+    
+    // 先显示攻击预警
+    showAttackWarning();
+    
+    // 预警结束后发起攻击
+    setTimeout(() => {
+      if (gameState.gameOver) {
+        gameState.isAttacking = false;
+        return;
+      }
+      
+      // 电脑主动攻击动画
+      p2.classList.add('attack');
+      setTimeout(() => p2.classList.remove('attack'), 400);
+      
+      // 计算伤害（如果玩家防御，减免80%）
+      const baseDmg = Math.floor(Math.random() * (enemyCfg.maxDmg - enemyCfg.minDmg + 1)) + enemyCfg.minDmg;
+      const finalDmg = gameState.isDefending ? Math.floor(baseDmg * 0.2) : baseDmg;
+      
+      gameState.hp1 -= finalDmg;
+      p1.classList.add('hurt');
+      setTimeout(() => p1.classList.remove('hurt'), 400);
+      
+      if (gameState.isDefending) {
+        showTxt(`🛡️ 成功防御！仅受到 ${finalDmg} 点伤害！`);
+        gameState.isDefending = false;
+        p1.classList.remove('defend');
+      } else {
+        showTxt(`⚠️电脑主动攻击！造成 ${finalDmg} 点伤害！`);
+      }
+      
+      updateHP();
+
+      // 检查玩家是否失败
+      if (gameState.hp1 <= 0) {
+        showTxt(`💀第${gameState.currentLevel}关失败！`);
+        gameState.gameOver = true;
+        clearInterval(gameState.activeAttackTimer);
+        clearInterval(gameState.computerMoveTimer);
+      }
+      gameState.isAttacking = false;
+    }, 800); // 和预警时长一致
+  }
+}
+
+// 启动电脑主动攻击定时器
+function startComputerActiveAttack() {
+  // 先清除旧的定时器，避免重复
+  if (gameState.activeAttackTimer) {
+    clearInterval(gameState.activeAttackTimer);
+  }
+  
+  if (gameState.gameOver) return;
+  
+  const enemyCfg = getEnemyConfig();
+  // 每隔指定时间触发一次主动攻击
+  gameState.activeAttackTimer = setInterval(() => {
+    computerActiveAttack();
+  }, enemyCfg.activeAttackInterval);
+}
+
+// 玩家防御技能
+function defend() {
+  if (gameState.gameOver || gameState.defenseCooldown > 0) return;
+  
+  gameState.isDefending = true;
+  p1.classList.add('defend');
+  showTxt('🛡️ 进入防御状态！减免80%伤害！');
+  
+  // 防御持续1.5秒
+  setTimeout(() => {
+    if (!gameState.gameOver) {
+      gameState.isDefending = false;
+      p1.classList.remove('defend');
+      showTxt('防御状态结束！');
+    }
+  }, 1500);
+  
+  // 启动防御冷却（5秒）
+  gameState.defenseCooldown = 5;
+  updateDefenseCooldown();
+  
+  gameState.defenseCooldownTimer = setInterval(() => {
+    gameState.defenseCooldown--;
+    updateDefenseCooldown();
+    
+    if (gameState.defenseCooldown <= 0) {
+      clearInterval(gameState.defenseCooldownTimer);
+      showTxt('✅ 防御技能已就绪！');
+    }
+  }, 1000);
+}
+
+// 攻击逻辑（玩家攻击）
+function attack() {
+  if (gameState.gameOver || gameState.isAttacking) return;
+  gameState.isAttacking = true;
+
+  // 玩家攻击（伤害随关卡提升，基础8-18）
+  const playerDmgMin = 8 + (gameState.currentLevel - 1) * 1;
+  const playerDmgMax = 18 + (gameState.currentLevel - 1) * 1;
+  const dmg = Math.floor(Math.random() * (playerDmgMax - playerDmgMin + 1)) + playerDmgMin;
+  
+  // 执行攻击动画
+  p1.classList.add('attack');
+  setTimeout(() => p1.classList.remove('attack'), 400);
+  
+  // 扣血
+  gameState.hp2 -= dmg;
+  p2.classList.add('hurt');
+  setTimeout(() => p2.classList.remove('hurt'), 400);
+  showTxt(`你造成 ${dmg} 点伤害！`);
+  updateHP();
+
+  // 检查是否击败敌人
+  if (gameState.hp2 <= 0) {
+    // 通关当前关卡
+    if (gameState.currentLevel < 5) {
+      showTxt(`🎉第${gameState.currentLevel}关通关！`);
+      gameState.gameOver = true;
+      clearInterval(gameState.activeAttackTimer);
+      clearInterval(gameState.computerMoveTimer);
+      // 2秒后自动进入下一关
+      setTimeout(() => {
+        gotoLevel(gameState.currentLevel + 1);
+      }, 2000);
+    } else {
+      // 通关所有关卡
+      showTxt(`🏆恭喜通关所有关卡！`);
+      gameState.gameOver = true;
+      clearInterval(gameState.activeAttackTimer);
+      clearInterval(gameState.computerMoveTimer);
+    }
+    gameState.isAttacking = false;
+    return;
+  }
+
+  // 电脑反击（根据当前关卡+难度配置）
+  const enemyCfg = getEnemyConfig();
+  // 反击前先显示预警
+  showAttackWarning();
+  
+  setTimeout(() => {
+    if (gameState.gameOver) {
+      gameState.isAttacking = false;
+      return;
+    }
+    p2.classList.add('attack');
+    setTimeout(() => p2.classList.remove('attack'), 400);
+    
+    // 电脑伤害（关卡+难度加成，防御减免80%）
+    const baseDmg = Math.floor(Math.random() * (enemyCfg.maxDmg - enemyCfg.minDmg + 1)) + enemyCfg.minDmg;
+    const finalDmg = gameState.isDefending ? Math.floor(baseDmg * 0.2) : baseDmg;
+    
+    gameState.hp1 -= finalDmg;
+    p1.classList.add('hurt');
+    setTimeout(() => p1.classList.remove('hurt'), 400);
+    
+    if (gameState.isDefending) {
+      showTxt(`🛡️ 成功防御反击！仅受到 ${finalDmg} 点伤害！`);
+      gameState.isDefending = false;
+      p1.classList.remove('defend');
+    } else {
+      showTxt(`电脑反击 ${finalDmg} 点！`);
+    }
+    
+    updateHP();
+
+    // 检查玩家是否失败
+    if (gameState.hp1 <= 0) {
+      showTxt(`💀第${gameState.currentLevel}关失败！`);
+      gameState.gameOver = true;
+      clearInterval(gameState.activeAttackTimer);
+      clearInterval(gameState.computerMoveTimer);
+    }
+    gameState.isAttacking = false;
+  }, enemyCfg.attackSpeed + 800); // 加上预警时间
+}
+
+// 重置游戏（保留当前关卡和难度）
+function resetGame() {
+  const enemyCfg = getEnemyConfig();
+  gameState.hp1 = 100;                // 玩家血量固定100
+  gameState.hp2 = enemyCfg.hp;        // 电脑血量随关卡/难度变化
+  gameState.gameOver = false;
+  gameState.isAttacking = false;
+  gameState.isDefending = false;
+  gameState.defenseCooldown = 0;
+  
+  // 重置玩家位置
+  playerPos = {
+    left: 20,
+    top: (battleField.offsetHeight - 160) / battleField.offsetHeight * 100
+  };
+  p1.style.left = playerPos.left + '%';
+  p1.style.top = playerPos.top + '%';
+  p1.classList.remove('defend');
+  
+  // 重置电脑位置
+  computerPos = {
+    left: 80,
+    top: (battleField.offsetHeight - 160) / battleField.offsetHeight * 100
+  };
+  p2.style.left = computerPos.left + '%';
+  p2.style.top = computerPos.top + '%';
+  
+  // 清除冷却定时器
+  if (gameState.defenseCooldownTimer) {
+    clearInterval(gameState.defenseCooldownTimer);
+  }
+  
+  updateHP();
+  updateDefenseCooldown();
+  showTxt('重新开始！');
+  
+  // 重启电脑主动攻击和移动
+  startComputerActiveAttack();
+  startComputerMove();
+}
+
+// 设置难度
+function setDifficulty(diff) {
+  // 更新样式
+  difficultyBtns.forEach(btn => btn.classList.remove('active'));
+  document.querySelector(`.difficulty-${diff}`).classList.add('active');
+  
+  // 更新游戏状态
+  gameState.difficulty = diff;
+  resetGame(); // 重置当前关卡
+  showTxt(`难度已切换为：${diff === 'easy' ? '简单' : diff === 'medium' ? '中等' : '困难'}`);
+}
+
+// 跳转到指定关卡
+function gotoLevel(level) {
+  if (level < 1 || level > 5) return;
+  
+  // 更新关卡按钮样式
+  levelBtns.forEach(btn => btn.classList.remove('active'));
+  levelBtns[level - 1].classList.add('active');
+  
+  // 更新游戏状态
+  gameState.currentLevel = level;
+  currentLevelEl.textContent = level;
+  
+  // 重置游戏（加载当前关卡+难度的配置）
+  resetGame();
+  showTxt(`进入第${level}关！`);
+}
+
+// 全方向移动函数
+function movePlayer(direction) {
+  if (gameState.gameOver) return;
+
+  const fieldWidth = battleField.offsetWidth;
+  const fieldHeight = battleField.offsetHeight;
+  const playerWidth = p1.offsetWidth;
+  const playerHeight = p1.offsetHeight;
+  const currentLeftPx = (playerPos.left / 100) * fieldWidth;
+  const currentTopPx = (playerPos.top / 100) * fieldHeight;
+
+  switch(direction) {
+    case 'left':
+      if (currentLeftPx > 10) {
+        playerPos.left -= (moveSpeed / fieldWidth) * 100;
+        p1.style.left = playerPos.left + '%';
+      }
+      break;
+    case 'right':
+      if (currentLeftPx < fieldWidth - playerWidth - 10) {
+        playerPos.left += (moveSpeed / fieldWidth) * 100;
+        p1.style.left = playerPos.left + '%';
+      }
+      break;
+    case 'up':
+      if (currentTopPx > 10) {
+        playerPos.top -= (moveSpeed / fieldHeight) * 100;
+        p1.style.top = playerPos.top + '%';
+      }
+      break;
+    case 'down':
+      if (currentTopPx < fieldHeight - playerHeight - 10) {
+        playerPos.top += (moveSpeed / fieldHeight) * 100;
+        p1.style.top = playerPos.top + '%';
+      }
+      break;
+  }
+}
+
+// 键盘事件监听（新增Shift防御）
+document.addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Shift'].includes(e.code)) {
+    e.preventDefault();
+  }
+
+  if (e.code === 'ArrowLeft') movePlayer('left');
+  if (e.code === 'ArrowRight') movePlayer('right');
+  if (e.code === 'ArrowUp') movePlayer('up');
+  if (e.code === 'ArrowDown') movePlayer('down');
+  if (e.code === 'Space') attack();
+  if (e.code === 'KeyR') resetGame();
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') defend(); // 左右Shift都可防御
+});
+
+// 初始化游戏
+(function initGame() {
+  const enemyCfg = getEnemyConfig();
+  gameState.hp2 = enemyCfg.hp;
+  // 初始化电脑位置
+  p2.style.left = computerPos.left + '%';
+  p2.style.top = computerPos.top + '%';
+  
+  updateHP();
+  updateDefenseCooldown();
+  showTxt('按↑↓←→移动，空格攻击！Shift防御！', 2000);
+  // 启动电脑主动攻击和移动
+  startComputerActiveAttack();
+  startComputerMove();
+})();
+</script>
+</body>
+</html>

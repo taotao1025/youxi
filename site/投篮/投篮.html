@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>投篮</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Arial', sans-serif; }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        #score-board { font-size: 32px; font-weight: bold; margin-bottom: 10px; }
+        #controls-hint {
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 8px;
+            line-height: 1.6;
+            max-width: 300px;
+        }
+        .key {
+            display: inline-block;
+            background: #fff;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin: 0 2px;
+        }
+        #loading {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white; font-size: 24px;
+            background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px;
+            z-index: 999;
+        }
+        #aim-tip {
+            position: absolute; bottom: 20%; width: 100%;
+            text-align: center; color: #00ff00;
+            font-size: 20px; font-weight: bold;
+            text-shadow: 0 0 5px black;
+            opacity: 0; transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        #error-msg {
+            position: absolute; top: 10px; right: 10px;
+            background: red; color: white; padding: 10px;
+            border-radius: 5px; display: none; z-index: 1000;
+            max-width: 300px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="ui-container">
+        <div id="score-board">得分：<span id="score">0</span></div>
+        <div id="controls-hint">
+            🏀 <b>操作指南:</b><br>
+            移动: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span><br>
+            瞄准: 鼠标拖动视角 (看到绿线)<br>
+            投篮: <span class="key">空格</span> (按住显示轨迹)<br>
+            <br>
+            💡 <b>技巧:</b> 站在三分线内，将绿线对准篮筐中心再松开空格！
+        </div>
+    </div>
+    <div id="aim-tip">按住空格瞄准...</div>
+    <div id="loading">正在加载游戏资源...</div>
+    <div id="error-msg"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as CANNON from 'cannon-es';
+
+        // --- 全局变量 ---
+        let scene, camera, renderer, controls;
+        let world; 
+        let lastTime;
+        let score = 0;
+        
+        // 游戏对象
+        let ballMesh, ballBody;
+        let playerGroup, playerParts = {};
+        let hoopSensorBody;
+        let hoopSensorState = { scored: false };
+        let aimLine;
+
+        // 输入状态
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        let isAiming = false;
+        
+        // 游戏状态
+        let isBallFlying = false;
+        let canShoot = true;
+        let playerSpeed = 6.0;
+        
+        const CONFIG = {
+            gravity: -9.82,
+            ballRadius: 0.24,
+            ballMass: 0.6,
+            shootForce: 12.0, // 稍微增加力度
+            shootUpForce: 9.0,
+            shootBackSpin: 15,
+            hoopHeight: 3.05,
+            hoopZ: -8
+        };
+
+        window.addEventListener('error', (e) => {
+            const errorDiv = document.getElementById('error-msg');
+            errorDiv.style.display = 'block';
+            errorDiv.innerText = '发生错误: ' + e.message;
+            document.getElementById('loading').style.display = 'none';
+            console.error(e);
+        });
+
+        init();
+        animate();
+
+        function init() {
+            try {
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB);
+                scene.fog = new THREE.Fog(0x87CEEB, 10, 60);
+
+                camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+                camera.position.set(0, 3.5, 7);
+
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                document.body.appendChild(renderer.domElement);
+
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                scene.add(ambientLight);
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(5, 10, 5);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 2048;
+                dirLight.shadow.mapSize.height = 2048;
+                scene.add(dirLight);
+
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.08;
+                controls.maxPolarAngle = Math.PI / 2 - 0.05;
+                controls.minDistance = 3;
+                controls.maxDistance = 25;
+                controls.target.set(0, 1, 0);
+
+                world = new CANNON.World();
+                world.gravity.set(0, CONFIG.gravity, 0);
+                world.broadphase = new CANNON.SAPBroadphase(world);
+                
+                const defaultMaterial = new CANNON.Material('default');
+                const defaultContactMaterial = new CANNON.ContactMaterial(defaultMaterial, defaultMaterial, {
+                    friction: 0.4,
+                    restitution: 0.6
+                });
+                world.addContactMaterial(defaultContactMaterial);
+
+                createFloor(defaultMaterial);
+                createPlayer();
+                createHoop(defaultMaterial);
+                createBall(defaultMaterial);
+                createAimLine();
+
+                window.addEventListener('resize', onWindowResize);
+                window.addEventListener('keydown', (e) => handleKey(e, true));
+                window.addEventListener('keyup', (e) => handleKey(e, false));
+                
+                document.getElementById('loading').style.display = 'none';
+            } catch (err) {
+                const errorDiv = document.getElementById('error-msg');
+                errorDiv.style.display = 'block';
+                errorDiv.innerText = '初始化失败: ' + err.message;
+                document.getElementById('loading').style.display = 'none';
+                console.error(err);
+            }
+        }
+
+        function createAimLine() {
+            const points = [];
+            for(let i=0; i<50; i++) points.push(new THREE.Vector3(0,0,0));
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2, transparent: true, opacity: 0.8 });
+            aimLine = new THREE.Line(geometry, material);
+            aimLine.frustumCulled = false;
+            scene.add(aimLine);
+            aimLine.visible = false;
+        }
+
+        function updateAimLine() {
+            if (!isAiming || isBallFlying) {
+                aimLine.visible = false;
+                return;
+            }
+            aimLine.visible = true;
+
+            const handPos = new THREE.Vector3(0.35, 1.4, 0.4);
+            handPos.applyMatrix4(playerGroup.matrixWorld);
+            
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y += 0.3;
+            direction.normalize();
+
+            const v0 = direction.clone().multiplyScalar(CONFIG.shootForce);
+            v0.y += CONFIG.shootUpForce;
+
+            const positions = aimLine.geometry.attributes.position.array;
+            let currentTime = 0;
+            const dt = 0.05;
+
+            for (let i = 0; i < 50; i++) {
+                const x = handPos.x + v0.x * currentTime;
+                const y = handPos.y + v0.y * currentTime + 0.5 * CONFIG.gravity * currentTime * currentTime;
+                const z = handPos.z + v0.z * currentTime;
+
+                positions[i*3] = x;
+                positions[i*3+1] = y;
+                positions[i*3+2] = z;
+
+                if (y < 0) {
+                    for (let j = i + 1; j < 50; j++) {
+                        positions[j*3] = x;
+                        positions[j*3+1] = 0;
+                        positions[j*3+2] = z;
+                    }
+                    break;
+                }
+                currentTime += dt;
+            }
+            aimLine.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function handleKey(e, isDown) {
+            const key = e.code;
+            if (key === 'KeyW' || key === 'ArrowUp') keys.w = isDown;
+            if (key === 'KeyS' || key === 'ArrowDown') keys.s = isDown;
+            if (key === 'KeyA' || key === 'ArrowLeft') keys.a = isDown;
+            if (key === 'KeyD' || key === 'ArrowRight') keys.d = isDown;
+            
+            if (key === 'Space') {
+                if (isDown && !keys.space && !isBallFlying && canShoot) {
+                    isAiming = true;
+                    document.getElementById('aim-tip').style.opacity = 1;
+                }
+                if (!isDown && isAiming) {
+                    isAiming = false;
+                    document.getElementById('aim-tip').style.opacity = 0;
+                    tryShoot();
+                }
+                keys.space = isDown;
+            }
+        }
+
+        function tryShoot() {
+            if (!canShoot || isBallFlying) return;
+            
+            canShoot = false;
+            isBallFlying = true;
+            aimLine.visible = false;
+
+            animateShoot();
+
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y += 0.3; 
+            direction.normalize();
+
+            // 关键修复：确保投篮瞬间使用的是当前的位置和方向
+            const handPos = new THREE.Vector3(0.35, 1.4, 0.4);
+            handPos.applyMatrix4(playerGroup.matrixWorld);
+            
+            // 强制更新物理球体位置到手上，防止投篮瞬间位置偏差
+            ballBody.position.copy(handPos);
+            ballBody.velocity.set(0,0,0); 
+            ballBody.angularVelocity.set(0,0,0);
+
+            // 施加力
+            ballBody.velocity.set(
+                direction.x * CONFIG.shootForce,
+                direction.y * CONFIG.shootForce + CONFIG.shootUpForce,
+                direction.z * CONFIG.shootForce
+            );
+            
+            ballBody.angularVelocity.set(-CONFIG.shootBackSpin, 0, 0); 
+            
+            // 唤醒身体以防休眠
+            ballBody.wakeUp();
+        }
+
+        function createFloor(material) {
+            const geo = new THREE.PlaneGeometry(80, 80);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#444';
+            ctx.fillRect(0,0,512,512);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(196, 40, 120, 100);
+            ctx.beginPath(); ctx.arc(256, 140, 60, 0, Math.PI, false); ctx.stroke();
+            ctx.beginPath(); ctx.arc(256, 40, 200, 0, Math.PI, false); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 256); ctx.lineTo(512, 256); ctx.stroke();
+            ctx.beginPath(); ctx.arc(256, 256, 60, 0, Math.PI*2); ctx.stroke();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const planeMat = new THREE.MeshStandardMaterial({ map: texture });
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), planeMat);
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.y = 0.01;
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            const shape = new CANNON.Box(new CANNON.Vec3(40, 0.1, 40));
+            const body = new CANNON.Body({ mass: 0, material: material });
+            body.addShape(shape);
+            body.position.set(0, -0.1, 0);
+            world.addBody(body);
+        }
+
+        function createPlayer() {
+            playerGroup = new THREE.Group();
+            scene.add(playerGroup);
+
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const shortMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+            const bodyGeo = new THREE.CylinderGeometry(0.3, 0.2, 0.8, 8);
+            const bodyMesh = new THREE.Mesh(bodyGeo, shirtMat);
+            bodyMesh.position.y = 1.2; bodyMesh.castShadow = true;
+            playerGroup.add(bodyMesh);
+
+            const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+            const headMesh = new THREE.Mesh(headGeo, skinMat);
+            headMesh.position.y = 1.75; headMesh.castShadow = true;
+            playerGroup.add(headMesh);
+
+            const armGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.6, 8);
+            const armMesh = new THREE.Mesh(armGeo, skinMat);
+            armMesh.position.set(0.35, 1.4, 0.2);
+            armMesh.rotation.z = -0.5; armMesh.rotation.x = -0.5;
+            armMesh.castShadow = true;
+            playerGroup.add(armMesh);
+            playerParts.arm = armMesh;
+
+            const legGeo = new THREE.CylinderGeometry(0.1, 0.09, 0.8, 8);
+            const legL = new THREE.Mesh(legGeo, shortMat); legL.position.set(-0.15, 0.4, 0); legL.castShadow = true; playerGroup.add(legL);
+            const legR = new THREE.Mesh(legGeo, shortMat); legR.position.set(0.15, 0.4, 0); legR.castShadow = true; playerGroup.add(legR);
+
+            playerGroup.position.set(0, 0, 6);
+        }
+
+        function createHoop(material) {
+            const hoopX = 0;
+            const hoopY = CONFIG.hoopHeight;
+            const hoopZ = CONFIG.hoopZ;
+
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 4, 16), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+            pole.position.set(hoopX, 2, hoopZ - 1);
+            pole.castShadow = true; scene.add(pole);
+
+            const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+            board.position.set(hoopX, hoopY + 0.6, hoopZ - 0.5);
+            board.castShadow = true; scene.add(board);
+            
+            const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.4, 1.0, 0.1));
+            const frame = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xff0000 }));
+            frame.position.copy(board.position); scene.add(frame);
+
+            const rim = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.025, 16, 32), new THREE.MeshStandardMaterial({ color: 0xff4500 }));
+            rim.rotation.x = Math.PI / 2;
+            rim.position.set(hoopX, hoopY, hoopZ);
+            rim.castShadow = true; scene.add(rim);
+
+            const net = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.15, 0.45, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.6 }));
+            net.position.set(hoopX, hoopY - 0.25, hoopZ); scene.add(net);
+
+            const boardShape = new CANNON.Box(new CANNON.Vec3(0.9, 0.6, 0.05));
+            const boardBody = new CANNON.Body({ mass: 0, material: material });
+            boardBody.addShape(boardShape);
+            boardBody.position.set(hoopX, hoopY + 0.6, hoopZ - 0.5);
+            world.addBody(boardBody);
+
+            const segments = 16;
+            const rimRadius = 0.23;
+            for(let i=0; i<segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x = Math.cos(angle) * rimRadius;
+                const z = Math.sin(angle) * rimRadius;
+                const shape = new CANNON.Sphere(0.035); 
+                const body = new CANNON.Body({ mass: 0, material: material });
+                body.addShape(shape);
+                body.position.set(hoopX + x, hoopY, hoopZ + z);
+                world.addBody(body);
+            }
+
+            const sensorShape = new CANNON.Cylinder(0.18, 0.18, 0.1, 8);
+            const q = new CANNON.Quaternion();
+            q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+            
+            hoopSensorBody = new CANNON.Body({ mass: 0, isTrigger: true });
+            hoopSensorBody.addShape(sensorShape, new CANNON.Vec3(0,0,0), q);
+            hoopSensorBody.position.set(hoopX, hoopY - 0.15, hoopZ);
+            hoopSensorBody.addEventListener('collide', (e) => {
+                if (e.body === ballBody && !isBallFlying) return;
+                if (ballBody.velocity.y < -0.5) handleScore();
+            });
+            world.addBody(hoopSensorBody);
+        }
+
+        function createBall(material) {
+            const geo = new THREE.SphereGeometry(CONFIG.ballRadius, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff8c00, roughness: 0.4, map: createBasketballTexture() });
+            ballMesh = new THREE.Mesh(geo, mat);
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            const shape = new CANNON.Sphere(CONFIG.ballRadius);
+            ballBody = new CANNON.Body({ mass: CONFIG.ballMass, material: material });
+            ballBody.addShape(shape);
+            ballBody.linearDamping = 0.1;
+            ballBody.angularDamping = 0.1;
+            
+            // 初始位置先随便设一个，会在 resetBallPosition 中修正
+            resetBallPosition();
+            world.addBody(ballBody);
+        }
+
+        function createBasketballTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ff8c00'; ctx.fillRect(0,0,256,128);
+            ctx.strokeStyle = '#222'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(0, 64); ctx.lineTo(256, 64); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(128, 0); ctx.lineTo(128, 128); ctx.stroke();
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function resetBallPosition() {
+            const handPos = new THREE.Vector3(0.35, 1.4, 0.4);
+            handPos.applyMatrix4(playerGroup.matrixWorld);
+            
+            // 【核心修复】强制同步物理体和网格
+            ballBody.position.set(handPos.x, handPos.y, handPos.z);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            ballBody.quaternion.set(0, 0, 0, 1);
+            
+            // 确保物理引擎不会让它睡着
+            ballBody.wakeUp();
+            
+            ballMesh.visible = true;
+            isBallFlying = false;
+            canShoot = true;
+            hoopSensorState.scored = false;
+            
+            playerParts.arm.rotation.x = -0.5;
+            playerParts.arm.rotation.z = -0.5;
+            playerParts.arm.position.set(0.35, 1.4, 0.2);
+        }
+
+        function animateShoot() {
+            let progress = 0;
+            const duration = 0.3;
+            function step(timestamp) {
+                if (!lastTime) lastTime = timestamp;
+                const dt = (timestamp - lastTime) / 1000;
+                lastTime = timestamp;
+                if (progress < duration) {
+                    progress += dt;
+                    const t = Math.min(progress / duration, 1);
+                    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+                    playerParts.arm.rotation.x = THREE.MathUtils.lerp(-0.5, -1.5, ease);
+                    playerParts.arm.position.z = THREE.MathUtils.lerp(0.2, 0.6, ease);
+                    playerGroup.position.y = Math.sin(t * Math.PI) * 0.2;
+                    requestAnimationFrame(step);
+                } else {
+                    playerParts.arm.rotation.x = -0.5;
+                    playerParts.arm.position.z = 0.2;
+                    playerGroup.position.y = 0;
+                    lastTime = null;
+                }
+            }
+            requestAnimationFrame(step);
+        }
+
+        function handleScore() {
+            if (hoopSensorState.scored) return;
+            hoopSensorState.scored = true;
+            score++;
+            document.getElementById('score').innerText = score;
+            
+            scene.background.setHex(0xffffaa);
+            setTimeout(() => scene.background.setHex(0x87CEEB), 150);
+            setTimeout(resetBallPosition, 1500);
+        }
+
+        function updatePlayerMovement(dt) {
+            if (isBallFlying) return;
+
+            const moveDir = new THREE.Vector3(0, 0, 0);
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            forward.y = 0; forward.normalize();
+            const right = new THREE.Vector3();
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+            if (keys.w) moveDir.add(forward);
+            if (keys.s) moveDir.sub(forward);
+            if (keys.d) moveDir.add(right);
+            if (keys.a) moveDir.sub(right);
+
+            if (moveDir.length() > 0) {
+                moveDir.normalize();
+                playerGroup.position.x += moveDir.x * playerSpeed * dt;
+                playerGroup.position.z += moveDir.z * playerSpeed * dt;
+                
+                playerGroup.position.x = Math.max(-38, Math.min(38, playerGroup.position.x));
+                playerGroup.position.z = Math.max(-38, Math.min(38, playerGroup.position.z));
+
+                const targetRotation = Math.atan2(moveDir.x, moveDir.z);
+                let rotDiff = targetRotation - playerGroup.rotation.y;
+                while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+                while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+                playerGroup.rotation.y += rotDiff * 10 * dt;
+                playerGroup.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.1;
+            } else {
+                playerGroup.position.y = 0;
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now() / 1000;
+            const dt = Math.min(time - (lastTime || time), 0.1);
+            lastTime = time;
+
+            // 1. 先更新玩家移动
+            updatePlayerMovement(dt);
+
+            // 2. 【核心修复】如果球没飞，强制将球“锁”在手上
+            // 必须在 world.step 之前执行，否则物理引擎会计算重力让球掉下来
+            if (!isBallFlying) {
+                const handPos = new THREE.Vector3(0.35, 1.4, 0.4);
+                handPos.applyMatrix4(playerGroup.matrixWorld);
+                
+                // 强制覆盖物理位置
+                ballBody.position.copy(handPos);
+                ballBody.velocity.set(0, 0, 0);
+                ballBody.angularVelocity.set(0, 0, 0);
+                
+                // 同时也更新网格位置（虽然 render 时会做，但为了保险）
+                ballMesh.position.copy(handPos);
+                ballMesh.quaternion.copy(playerGroup.quaternion);
+            }
+
+            // 3. 运行物理步进
+            world.step(1/60, dt, 3);
+
+            // 4. 更新瞄准线
+            updateAimLine();
+
+            // 5. 如果球飞了，同步网格到物理位置
+            if (isBallFlying) {
+                ballMesh.position.copy(ballBody.position);
+                ballMesh.quaternion.copy(ballBody.quaternion);
+                
+                // 简单的落地检测
+                if (ballBody.position.y < -5 || (Math.abs(ballBody.velocity.y) < 0.1 && Math.abs(ballBody.velocity.x) < 0.1 && ballBody.position.y < 1)) {
+                     if(!hoopSensorState.scored) setTimeout(resetBallPosition, 1000);
+                }
+            }
+
+            // 6. 摄像机控制
+            if (!controls.mouseButtonPressed) {
+                 controls.target.lerp(new THREE.Vector3(playerGroup.position.x, 1, playerGroup.position.z), 0.1);
+            }
+            controls.update();
+            
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

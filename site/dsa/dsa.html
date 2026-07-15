@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火柴人战争：极简版</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        canvas { display: block; }
+        #ui { 
+            position: absolute; top: 10px; left: 10px; color: #fff; 
+            display: flex; gap: 15px; align-items: center; 
+            font-size: 14px;
+        }
+        #gold { font-size: 20px; font-weight: bold; color: #ffd700; }
+        #time-location { color: #888; font-size: 12px; padding: 5px 10px; background: rgba(255,255,255,0.05); border-radius: 4px; }
+        .btn { 
+            padding: 8px 15px; background: #444; border: 2px solid #666; color: #fff; 
+            cursor: pointer; border-radius: 4px; transition: all 0.2s; font-size: 13px;
+        }
+        .btn:hover { background: #555; border-color: #888; }
+        .btn:active { background: #333; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        #msg { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            font-size: 40px; color: #fff; text-shadow: 0 0 10px #000; 
+            pointer-events: none; opacity: 0; transition: 0.5s; 
+        }
+        .controls-hint { 
+            position: absolute; bottom: 10px; right: 10px; color: #888; 
+            font-size: 12px; text-align: right; 
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="gold">💰 50</div>
+        
+        <!-- 新增：时间与地点显示容器 -->
+        <div id="time-location">
+            <div>📅 当前时间：2026-06-07 星期日</div>
+            <div>📍 当前地点：浙江省 宁波市</div>
+        </div>
+
+        <button class="btn" id="btn-miner" onclick="game.spawnUnit('miner')">⛏ 矿工 (15)</button>
+        <button class="btn" id="btn-sword" onclick="game.spawnUnit('sword')">⚔ 剑士 (30)</button>
+        <button class="btn" id="btn-archer" onclick="game.spawnUnit('archer')">🏹 弓箭手 (50)</button>
+        <button class="btn" id="btn-attack" onclick="game.toggleAttackUp()" style="border-color:#a44;">🚩 进攻模式</button>
+    </div>
+    <div id="msg"></div>
+    <div class="controls-hint">
+        提示：点击按钮造兵，点击“进攻模式”让部队向右推进，否则他们会防守基地。<br>
+        💡 修复版：已优化逻辑，游戏运行更稳定！
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /** * 火柴人战争 - 核心逻辑 (修复版) */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const goldEl = document.getElementById('gold');
+        const msgEl = document.getElementById('msg');
+
+        // --- 游戏配置 ---
+        const CONFIG = {
+            gravity: 0.6,
+            groundHeight: 80,
+            baseHP: 100,
+            enemySpawnRate: 300,
+            colors: {
+                player: '#4fc3f7',
+                enemy: '#ef5350',
+                gold: '#ffd700',
+                ground: '#3e2723'
+            }
+        };
+
+        // --- 单位配置 ---
+        const UNIT_TYPES = {
+            miner: { cost: 15, hp: 40, speed: 2, damage: 5, range: 30, attackSpeed: 40, color: '#ccc' },
+            sword: { cost: 30, hp: 80, speed: 2.5, damage: 15, range: 40, attackSpeed: 30, color: '#fff' },
+            archer: { cost: 50, hp: 50, speed: 2, damage: 12, range: 200, attackSpeed: 60, color: '#fff' }
+        };
+
+        class Game {
+            constructor() {
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                this.playerGold = 50;
+                this.playerBase = { x: 50, y: 0, hp: CONFIG.baseHP, maxHp: CONFIG.baseHP, side: 'left' };
+                this.enemyBase = { x: 0, y: 0, hp: CONFIG.baseHP, maxHp: CONFIG.baseHP, side: 'right' };
+                
+                this.units = []; // 存储所有单位
+                this.projectiles = []; // 存储投射物
+                this.particles = []; // 存储粒子效果
+                
+                this.isAttacking = false;
+                this.frameCount = 0;
+                this.gameOver = false;
+                
+                this.updateUI();
+                this.loop();
+            }
+
+            resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                this.groundY = canvas.height - CONFIG.groundHeight;
+                // 确保基座 Y 坐标始终是地面顶部
+                this.playerBase.y = this.groundY;
+                this.enemyBase.x = canvas.width - 50;
+                this.enemyBase.y = this.groundY;
+            }
+
+            spawnUnit(type, side = 'player') {
+                const config = UNIT_TYPES[type];
+                if (side === 'player' && this.playerGold < config.cost) return;
+                if (side === 'player') this.playerGold -= config.cost;
+
+                const x = side === 'player' ? 100 : canvas.width - 100;
+                const unit = {
+                    id: Date.now() + Math.random(),
+                    type, side,
+                    x, y: this.groundY, // 初始 Y 坐标是地面
+                    vx: 0, vy: 0,
+                    hp: config.hp, maxHp: config.hp,
+                    speed: config.speed * (side === 'player' ? 1 : -1),
+                    damage: config.damage, range: config.range,
+                    attackSpeed: config.attackSpeed, attackCooldown: 0,
+                    color: side === 'player' ? CONFIG.colors.player : CONFIG.colors.enemy,
+                    state: 'idle',
+                    target: null,
+                    width: 20, height: 40
+                };
+
+                if (type === 'miner') {
+                    unit.mineTarget = side === 'player' ? canvas.width * 0.4 : canvas.width * 0.6; // 修正矿点
+                    unit.state = 'move';
+                }
+                this.units.push(unit); // 添加到单位列表
+                this.updateUI();
+            }
+
+            toggleAttackUp() {
+                this.isAttacking = !this.isAttacking;
+                const btn = document.getElementById('btn-attack');
+                btn.style.background = this.isAttacking ? 'rgba(255, 0, 0, 0.2)' : '#444';
+                btn.innerText = this.isAttacking ? '🛡 防守模式' : '🚩 进攻模式';
+                
+                // 切换模式时重置玩家单位状态
+                this.units.forEach(u => {
+                    if (u && u.side === 'player' && u.type !== 'miner') {
+                        u.state = 'idle';
+                        u.target = null;
+                    }
+                });
+            }
+
+            updateUI() {
+                goldEl.innerText = `💰 ${Math.floor(this.playerGold)}`;
+                document.getElementById('btn-miner').disabled = this.playerGold < 15;
+                document.getElementById('btn-sword').disabled = this.playerGold < 30;
+                document.getElementById('btn-archer').disabled = this.playerGold < 50;
+            }
+
+            showMessage(text) {
+                msgEl.innerText = text;
+                msgEl.style.opacity = 1;
+                setTimeout(() => msgEl.style.opacity = 0, 2000);
+            }
+
+            // --- 核心更新逻辑 (修复版) ---
+            update() {
+                if (this.gameOver) return;
+                this.frameCount++;
+
+                // 1. 玩家被动收入
+                if (this.frameCount % 60 === 0) this.playerGold += 2;
+
+                // 2. AI 生成敌人 (修复：防止生成过快)
+                if (this.frameCount % CONFIG.enemySpawnRate === 0) {
+                    const types = Object.keys(UNIT_TYPES); // 使用所有单位类型
+                    const randType = types[Math.floor(Math.random() * types.length)];
+                    // 确保敌人不会生成矿工，或者为其设定不同的行为
+                    if(randType !== 'miner') { 
+                         this.spawnUnit(randType, 'enemy');
+                    }
+                }
+                // 难度调整：随着时间推移，敌人生成变快 (限制最小间隔)
+                if (this.frameCount > 600) {
+                    CONFIG.enemySpawnRate = Math.max(120, 300 - (this.frameCount / 10));
+                }
+
+                // 3. 更新所有单位状态
+                for (let i = 0; i < this.units.length; i++) {
+                    const u = this.units[i];
+                    // 修复：如果单位不存在或已死亡，跳过
+                    if (!u || u.hp <= 0) continue; 
+                    
+                    // 确保单位 Y 坐标始终是地面
+                    u.y = this.groundY; 
+                    this.updateUnit(u);
+                }
+
+                // 4. 收集存活单位 (清理死亡单位)
+                const aliveUnits = [];
+                for (let i = 0; i < this.units.length; i++) {
+                    const u = this.units[i];
+                    if (u && u.hp > 0) {
+                        aliveUnits.push(u);
+                    } else if (u && u.hp <= 0) {
+                        // 单位死亡特效
+                        this.createParticles(u.x, u.y - 20, u.color);
+                        if (u.side === 'enemy') this.playerGold += 10; // 击杀奖励
+                    }
+                }
+                this.units = aliveUnits; // 替换数组，完成清理
+
+                // 5. 更新投射物
+                const aliveProjectiles = [];
+                for (let p of this.projectiles) {
+                    // 修复：如果投射物不存在，跳过
+                    if (!p) continue;
+                    
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.2; // 重力
+
+                    // 出界检查
+                    if (p.y > canvas.height || p.x < 0 || p.x > canvas.width) continue;
+
+                    // 命中检测
+                    let hit = false;
+                    for (let u of this.units) { // 遍历存活单位
+                        if (!u || u.side === p.side) continue; // 非己方单位
+                        const dist = Math.hypot(u.x - p.x, (u.y - 20) - p.y); // 使用hypot计算距离
+                        if (dist < 15) {
+                            u.hp -= p.damage;
+                            hit = true;
+                            break;
+                        }
+                    }
+                    // 基地命中
+                    const targetBase = p.side === 'player' ? this.enemyBase : this.playerBase;
+                    if (!hit && Math.abs(targetBase.x - p.x) < 30 && p.y > targetBase.y - 60) {
+                        targetBase.hp -= p.damage;
+                        hit = true;
+                    }
+                    if (!hit) aliveProjectiles.push(p); // 未命中则保留
+                }
+                this.projectiles = aliveProjectiles; // 替换数组，完成清理
+
+                // 6. 更新粒子
+                this.particles = this.particles.filter(p => {
+                    // 修复：如果粒子不存在，跳过
+                    if (!p) return false;
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life--;
+                    return p.life > 0; // 生存期大于0则保留
+                });
+
+                // 7. 胜负判定
+                if (this.playerBase.hp <= 0) this.endGame(false);
+                if (this.enemyBase.hp <= 0) this.endGame(true);
+
+                this.updateUI();
+            }
+
+            updateUnit(u) {
+                // 修复：再次确认单位有效
+                if (!u || u.hp <= 0) return;
+                
+                if (u.attackCooldown > 0) u.attackCooldown--;
+
+                // 矿工逻辑
+                if (u.type === 'miner') {
+                    const mineX = u.side === 'player' ? canvas.width * 0.4 : canvas.width * 0.6;
+                    const dist = Math.abs(u.x - mineX);
+                    if (dist > 10) {
+                        u.x += (mineX > u.x ? 1 : -1) * u.speed;
+                        u.state = 'move';
+                    } else {
+                        u.state = 'idle';
+                        if (u.attackCooldown <= 0) {
+                            if (u.side === 'player') this.playerGold += 5;
+                            u.attackCooldown = 60;
+                            this.createParticles(u.x, u.y - 10, CONFIG.colors.gold);
+                        }
+                    }
+                    return; // 矿工逻辑执行完毕，返回
+                }
+
+                // 战斗单位逻辑
+                let target = null;
+                let minDist = Infinity;
+                for (let other of this.units) { // 遍历存活单位
+                    // 修复：检查目标单位是否存在且非友军且未死亡
+                    if (!other || other.side === u.side || other.hp <= 0) continue;
+                    const d = Math.abs(other.x - u.x);
+                    if (d < minDist) { minDist = d; target = other; }
+                }
+
+                if (target) {
+                    const dist = Math.abs(target.x - u.x);
+                    if (dist < u.range) {
+                        u.state = 'attack';
+                        if (u.attackCooldown <= 0) {
+                            if (u.type === 'archer') {
+                                this.shoot(u, target.x, target.y - 20);
+                            } else {
+                                target.hp -= u.damage;
+                                this.createParticles(target.x, target.y - 20, '#fff');
+                            }
+                            u.attackCooldown = u.attackSpeed;
+                        }
+                    } else {
+                        u.state = 'move';
+                        u.x += (target.x > u.x ? 1 : -1) * u.speed;
+                    }
+                } else {
+                    // 无目标时的行为
+                    if (this.isAttacking && u.side === 'player') {
+                        u.x += u.speed;
+                    } else {
+                        const baseX = u.side === 'player' ? 150 : canvas.width - 150;
+                        if (Math.abs(u.x - baseX) > 50) {
+                            u.x += (baseX > u.x ? 1 : -1) * u.speed;
+                        }
+                    }
+                }
+                u.x = Math.max(0, Math.min(canvas.width, u.x)); // 边界限制
+            }
+
+            shoot(from, tx, ty) {
+                 // 修复：在射击前进行严格检查
+                 if (!from || typeof tx !== 'number' || typeof ty !== 'number' || isNaN(tx) || isNaN(ty)) {
+                     return; // 参数无效则不射击
+                 }
+                 const angle = Math.atan2(ty - (from.y - 20), tx - from.x);
+                 this.projectiles.push({
+                     x: from.x,
+                     y: from.y - 20,
+                     vx: Math.cos(angle) * 6,
+                     vy: Math.sin(angle) * 3,
+                     damage: from.damage,
+                     side: from.side,
+                     color: from.color
+                 });
+             }
+
+            createParticles(x, y, color) {
+                for (let i = 0; i < 5; i++) {
+                    this.particles.push({
+                        x, y,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: (Math.random() - 0.5) * 4,
+                        life: 20,
+                        color
+                    });
+                }
+            }
+
+            endGame(win) {
+                this.gameOver = true;
+                this.showMessage(win ? "🎉 胜利！" : "💀 基地沦陷！");
+            }
+
+            // --- 渲染 ---
+            draw() {
+                // 背景
+                ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 地面
+                ctx.fillStyle = CONFIG.colors.ground;
+                ctx.fillRect(0, this.groundY, canvas.width, CONFIG.groundHeight);
+
+                // 基地
+                this.drawBase(this.playerBase, CONFIG.colors.player);
+                this.drawBase(this.enemyBase, CONFIG.colors.enemy);
+
+                // 粒子
+                ctx.globalAlpha = 0.8;
+                for (let p of this.particles) {
+                    // 修复：绘制前检查粒子是否存在
+                    if (!p) continue;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, 3, 3);
+                }
+                ctx.globalAlpha = 1;
+
+                // 投射物
+                ctx.fillStyle = '#fff';
+                for (let p of this.projectiles) {
+                    // 修复：绘制前检查投射物是否存在
+                    if (!p) continue;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 单位
+                for (let u of this.units) {
+                    // 修复：绘制前检查单位是否存在且存活
+                    if (!u || u.hp <= 0) continue;
+                    this.drawStickman(u);
+                }
+            }
+
+            drawBase(base, color) {
+                if (!base) return; // 修复：绘制前检查基地是否存在
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(base.x - 30, base.y - 80, 60, 80);
+                ctx.globalAlpha = 1;
+                // 血条背景
+                ctx.fillStyle = '#333';
+                ctx.fillRect(base.x - 30, base.y - 90, 60, 8);
+                // 血条
+                ctx.fillStyle = color;
+                ctx.fillRect(base.x - 30, base.y - 90, 60 * (base.hp / base.maxHp), 8);
+            }
+
+            drawStickman(u) {
+                if (!u) return; // 修复：绘制前检查单位是否存在
+                const x = u.x; const y = u.y;
+                const dir = u.side === 'player' ? 1 : -1;
+                ctx.strokeStyle = u.color; ctx.lineWidth = 3; ctx.lineCap = 'round';
+
+                // 头
+                ctx.beginPath(); ctx.arc(x, y - 35, 6, 0, Math.PI * 2); ctx.stroke();
+                // 身体
+                ctx.beginPath(); ctx.moveTo(x, y - 29); ctx.lineTo(x, y - 10); ctx.stroke();
+                
+                // 腿 (行走动画)
+                const walk = Math.sin(this.frameCount * 0.1 + x) * (u.state === 'move' ? 5 : 0);
+                ctx.beginPath();
+                ctx.moveTo(x, y - 10);
+                ctx.lineTo(x - 8 + walk, y);
+                ctx.moveTo(x, y - 10);
+                ctx.lineTo(x + 8 - walk, y);
+                ctx.stroke();
+
+                // 手臂/武器
+                ctx.beginPath(); ctx.moveTo(x, y - 25);
+                if (u.type === 'archer') {
+                    ctx.lineTo(x + dir * 12, y - 18);
+                    // 弓弦
+                    ctx.moveTo(x + dir * 12, y - 28);
+                    ctx.lineTo(x + dir * 12, y - 10);
+                } else if (u.type === 'sword') {
+                    const swing = u.attackCooldown > u.attackSpeed - 10 ? 15 : 0;
+                    ctx.lineTo(x + dir * 18, y - 20 + swing);
+                } else { // miner
+                    ctx.lineTo(x + dir * 8, y - 15);
+                }
+                ctx.stroke();
+
+                // 血条
+                if (u.hp < u.maxHp) {
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(x - 12, y - 50, 24, 4);
+                    ctx.fillStyle = u.hp > u.maxHp * 0.3 ? '#4caf50' : '#f44336';
+                    ctx.fillRect(x - 12, y - 50, 24 * (u.hp / u.maxHp), 4);
+                }
+            }
+
+            loop() {
+                this.update();
+                this.draw();
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        // 启动游戏
+        const game = new Game();
+    </script>
+</body>
+</html>

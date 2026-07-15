@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大鱼吃小鱼</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #006994, #003366); /* 深海背景 */
+            font-family: 'Microsoft YaHei', sans-serif;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 让鼠标事件穿透到 Canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #score-board {
+            color: white;
+            font-size: 24px;
+            padding: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto; /* 恢复按钮点击 */
+            color: white;
+            z-index: 10;
+        }
+
+        h1 { font-size: 60px; margin: 0 0 20px 0; text-shadow: 0 0 10px #00d2ff; }
+        p { font-size: 20px; margin-bottom: 30px; }
+        
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #ff9900;
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.1s;
+            box-shadow: 0 4px 15px rgba(255, 153, 0, 0.4);
+        }
+
+        button:hover { transform: scale(1.05); background: #ffaa33; }
+        button:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- UI 界面 -->
+    <div id="ui-layer">
+        <div id="score-board">分数: <span id="score-val">0</span></div>
+    </div>
+
+    <!-- 开始屏幕 -->
+    <div id="start-screen">
+        <h1>大鱼吃小鱼</h1>
+        <p>移动鼠标控制鱼的方向，吃掉比你小的鱼，躲避比你大的鱼！</p>
+        <button onclick="startGame()">开始游戏</button>
+    </div>
+
+    <!-- 结束屏幕 -->
+    <div id="game-over-screen" class="hidden">
+        <h1>游戏结束</h1>
+        <p>最终得分: <span id="final-score">0</span></p>
+        <button onclick="startGame()">重新开始</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-val');
+        const finalScoreEl = document.getElementById('final-score');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+
+        // 游戏状态
+        let gameRunning = false;
+        let score = 0;
+        let animationId;
+        let width, height;
+
+        // 鼠标位置
+        const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+        // 调整画布大小
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 监听鼠标移动
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        // 鱼类基类
+        class Fish {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.angle = 0;
+                this.speed = 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // 鱼身
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.radius * 1.5, this.radius, 0, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.stroke();
+
+                // 鱼尾
+                ctx.beginPath();
+                ctx.moveTo(-this.radius * 1.2, 0);
+                ctx.lineTo(-this.radius * 2.2, -this.radius * 0.8);
+                ctx.lineTo(-this.radius * 2.2, this.radius * 0.8);
+                ctx.closePath();
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.stroke();
+
+                // 鱼眼
+                ctx.beginPath();
+                ctx.arc(this.radius * 0.8, -this.radius * 0.4, this.radius * 0.25, 0, Math.PI * 2);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(this.radius * 0.9, -this.radius * 0.4, this.radius * 0.1, 0, Math.PI * 2);
+                ctx.fillStyle = 'black';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 玩家类
+        class Player extends Fish {
+            constructor() {
+                super(width / 2, height / 2, 20, '#FFD700'); // 金色
+                this.velocity = { x: 0, y: 0 };
+            }
+
+            update() {
+                // 平滑移动 towards 鼠标
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                
+                // 计算角度
+                this.angle = Math.atan2(dy, dx);
+
+                // 简单的缓动跟随
+                const speed = 0.05; // 跟随速度系数
+                this.x += dx * speed;
+                this.y += dy * speed;
+
+                // 边界限制
+                this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+
+                this.draw();
+            }
+        }
+
+        // 敌人类（食物或其他鱼）
+        class Enemy extends Fish {
+            constructor() {
+                // 随机生成在屏幕边缘
+                let x, y;
+                if (Math.random() < 0.5) {
+                    x = Math.random() < 0.5 ? -50 : width + 50;
+                    y = Math.random() * height;
+                } else {
+                    x = Math.random() * width;
+                    y = Math.random() < 0.5 ? -50 : height + 50;
+                }
+
+                // 随机大小（根据当前玩家大小调整难度，但这里为了简单先随机）
+                // 随着分数增加，生成大鱼概率增加
+                const difficultyMultiplier = 1 + score / 500;
+                const randomSize = Math.random() * 40 + 10; 
+                const radius = Math.min(randomSize * difficultyMultiplier, 80); // 最大半径80
+
+                // 随机颜色
+                const hue = Math.random() * 360;
+                const color = `hsl(${hue}, 70%, 60%)`;
+
+                super(x, y, radius, color);
+
+                // 速度：越大的鱼游得越快（为了增加压迫感）
+                const speedBase = Math.random() * 1 + 0.5;
+                this.velocity = {
+                    x: (Math.random() - 0.5) * speedBase * (radius/20), // 大鱼更快
+                    y: (Math.random() - 0.5) * speedBase * (radius/20)
+                };
+
+                // 确保它总是朝屏幕中心大概方向游，避免在边缘打转
+                const angleToCenter = Math.atan2(height/2 - y, width/2 - x);
+                // 稍微修正角度
+                this.angle = angleToCenter;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * 2; // 恒定速度游动
+                this.y += Math.sin(this.angle) * 2;
+
+                // 简单的摆动动画
+                this.draw();
+            }
+        }
+
+        // 气泡背景类
+        class Bubble {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = height + Math.random() * 100;
+                this.radius = Math.random() * 10 + 2;
+                this.speed = Math.random() * 2 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.1;
+            }
+            update() {
+                this.y -= this.speed;
+                if (this.y < -50) {
+                    this.y = height + 50;
+                    this.x = Math.random() * width;
+                }
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+
+        let player;
+        let enemies = [];
+        let bubbles = [];
+        let spawnTimer = 0;
+
+        function init() {
+            player = new Player();
+            enemies = [];
+            bubbles = [];
+            score = 0;
+            scoreEl.innerText = score;
+            
+            // 创建背景气泡
+            for(let i=0; i<20; i++) {
+                bubbles.push(new Bubble());
+            }
+        }
+
+        function spawnEnemy() {
+            // 随着分数提高，生成频率加快
+            const spawnRate = Math.max(20, 60 - Math.floor(score / 50));
+            if (spawnTimer++ % spawnRate === 0) {
+                enemies.push(new Enemy());
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+
+                // 碰撞检测
+                if (dist - enemy.radius - player.radius < 1) {
+                    if (player.radius >= enemy.radius) {
+                        // 吃掉敌人
+                        score += Math.floor(enemy.radius);
+                        scoreEl.innerText = score;
+                        
+                        // 玩家变大（有上限）
+                        if (player.radius < 100) {
+                            player.radius += enemy.radius * 0.05; 
+                        }
+                        
+                        enemies.splice(i, 1);
+                    } else {
+                        // 被吃掉 -> 游戏结束
+                        endGame();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            if (!gameRunning) return;
+            animationId = requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, width, height);
+
+            // 绘制背景气泡
+            bubbles.forEach(bubble => bubble.update());
+
+            // 生成敌人
+            spawnEnemy();
+
+            // 更新敌人
+            enemies.forEach(enemy => enemy.update());
+
+            // 更新玩家
+            player.update();
+
+            // 检测碰撞
+            checkCollisions();
+        }
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameRunning = true;
+            init();
+            animate();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            finalScoreEl.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>
