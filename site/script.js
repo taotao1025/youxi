@@ -22,11 +22,39 @@ document.addEventListener('DOMContentLoaded', function() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
     }
+
+    // 作者简介弹窗
+    const authorBtn = document.getElementById('authorIntroBtn');
+    const authorPanel = document.getElementById('authorPanel');
+    const closeAuthorPanel = document.getElementById('closeAuthorPanel');
+
+    if (authorBtn && authorPanel) {
+        authorBtn.addEventListener('click', function() {
+            authorPanel.classList.add('visible');
+            authorPanel.setAttribute('aria-hidden', 'false');
+        });
+    }
+
+    if (closeAuthorPanel && authorPanel) {
+        closeAuthorPanel.addEventListener('click', function() {
+            authorPanel.classList.remove('visible');
+            authorPanel.setAttribute('aria-hidden', 'true');
+        });
+    }
+
+    if (authorPanel) {
+        authorPanel.addEventListener('click', function(event) {
+            if (event.target === authorPanel) {
+                authorPanel.classList.remove('visible');
+                authorPanel.setAttribute('aria-hidden', 'true');
+            }
+        });
+    }
     
     // 侧边小按钮演示（可扩展）
     document.querySelectorAll('.side-tools .tool').forEach(btn => {
         btn.addEventListener('click', function() {
-            if (this.id === 'backToTop') return;
+            if (this.id === 'backToTop' || this.id === 'authorIntroBtn') return;
             alert(this.textContent + '（示例）');
         });
     });

@@ -216,11 +216,50 @@
         </aside>
     </main>
 
+    <section class="comments-panel">
+        <div class="comments-header">
+            <h3>评论区</h3>
+            <p>欢迎在这里留下你的游戏感想，文明交流共同打造更好社区。</p>
+        </div>
+        <div class="giscus-wrap">
+            <script src="https://giscus.app/client.js"
+                data-repo="taotao1025/111"
+                data-repo-id="R_kgDOTfy1XA"
+                data-category="Announcements"
+                data-category-id="DIC_kwDOTfy1XM4DBtI9"
+                data-mapping="pathname"
+                data-strict="0"
+                data-reactions-enabled="1"
+                data-emit-metadata="1"
+                data-input-position="top"
+                data-theme="light_high_contrast"
+                data-lang="zh-CN"
+                data-loading="lazy"
+                crossorigin="anonymous"
+                async>
+            </script>
+        </div>
+    </section>
+
+    <section class="author-panel" id="authorPanel" aria-hidden="true">
+        <div class="author-panel-card">
+            <button class="author-close" id="closeAuthorPanel" aria-label="关闭作者简介">×</button>
+            <div class="author-panel-header">
+                <h3>作者简介</h3>
+                <p>了解游戏陆背后的创作者与理念。</p>
+            </div>
+            <div class="author-panel-body">
+                <p><strong>作者：</strong>落轩</p>
+                <p><strong>简介：</strong>热爱网页游戏整理与分享，致力于为玩家提供轻松、免下载的游戏体验。</p>
+                <p><strong>理念：</strong>简单好玩、风格清爽、内容丰富，让每一次点击都能发现好游戏。</p>
+                <p><strong>联系方式：</strong>admin@gameinlu.top</p>
+            </div>
+        </div>
+    </section>
+
     <!-- 右侧工具栏 -->
     <div class="side-tools">
-        <button class="tool">最新游戏</button>
-        <button class="tool">女生游戏</button>
-        <button class="tool">意见反馈</button>
+        <button class="tool" id="authorIntroBtn">作者简介</button>
         <button class="tool" id="backToTop">回到顶部</button>
     </div>
 
